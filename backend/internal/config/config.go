@@ -54,10 +54,13 @@ var builtInDefaults = defaults{
 }
 
 type Config struct {
-	ServerPort      int
-	DBPath          string
-	Issuer          string
-	FrontendDistDir string
+	ServerPort            int
+	DBPath                string
+	Issuer                string
+	FrontendDistDir       string
+	APUpstreamBaseURL     string
+	ChatWSUpstreamURL     string
+	APUpstreamAccessToken string
 
 	AdminUsername       string
 	AdminPasswordBcrypt string
@@ -81,13 +84,16 @@ func Load() (*Config, error) {
 
 	port := envInt("SERVER_PORT", builtInDefaults.ServerPort)
 	cfg := &Config{
-		ServerPort:          port,
-		DBPath:              env("AUTH_DB_PATH", defaultDBPath()),
-		Issuer:              env("AUTH_ISSUER", builtInDefaults.Issuer),
-		FrontendDistDir:     env("FRONTEND_DIST_DIR", ""),
-		AdminUsername:       env("AUTH_ADMIN_USERNAME", builtInDefaults.AdminUsername),
-		AdminPasswordBcrypt: normalizeQuotedValue(env("AUTH_ADMIN_PASSWORD_BCRYPT", "")),
-		AppUsername:         env("AUTH_APP_USERNAME", builtInDefaults.AppUsername),
+		ServerPort:            port,
+		DBPath:                env("AUTH_DB_PATH", defaultDBPath()),
+		Issuer:                env("AUTH_ISSUER", builtInDefaults.Issuer),
+		FrontendDistDir:       env("FRONTEND_DIST_DIR", ""),
+		APUpstreamBaseURL:     env("AP_UPSTREAM_BASE_URL", ""),
+		ChatWSUpstreamURL:     env("CHAT_WS_UPSTREAM_URL", ""),
+		APUpstreamAccessToken: env("AP_UPSTREAM_ACCESS_TOKEN", ""),
+		AdminUsername:         env("AUTH_ADMIN_USERNAME", builtInDefaults.AdminUsername),
+		AdminPasswordBcrypt:   normalizeQuotedValue(env("AUTH_ADMIN_PASSWORD_BCRYPT", "")),
+		AppUsername:           env("AUTH_APP_USERNAME", builtInDefaults.AppUsername),
 		AppMasterPasswordBcrypt: normalizeQuotedValue(
 			env("AUTH_APP_MASTER_PASSWORD_BCRYPT", ""),
 		),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"embed"
 	"encoding/base64"
@@ -40,6 +41,8 @@ const (
 	canonicalOAuth2BasePath    = "/api/oauth2"
 	legacyOpenIDBasePath       = "/openid"
 	legacyOAuth2BasePath       = "/oauth2"
+	appPairingTicketTTL        = 5 * time.Minute
+	appPairingMaxSecretMisses  = 5
 )
 
 //go:embed templates/*.html
@@ -53,15 +56,36 @@ type Server struct {
 	templates *template.Template
 	logger    *log.Logger
 
+	apAPIProxyOnce sync.Once
+	apAPIProxy     http.Handler
+	apAPIProxyErr  error
+
 	adminSessionsMu sync.RWMutex
 	adminSessions   map[string]model.AdminSession
 
 	oauthSessionsMu sync.RWMutex
 	oauthSessions   map[string]model.OAuthUserSession
 
+	pairingTicketsMu sync.Mutex
+	pairingTickets   map[string]appPairingTicket
+
 	allowNewDeviceLogin atomic.Bool
 
 	cron *cron.Cron
+}
+
+type appPairingTicket struct {
+	PairingID                string
+	SecretSHA256             [32]byte
+	DesktopDeviceID          string
+	DesktopIdentityCreatedAt string
+	DesktopUsername          string
+	DesktopHostname          string
+	AppServerIssuer          string
+	AppServerPublicKeySHA256 string
+	APIBaseURL               string
+	ExpiresAt                time.Time
+	SecretMisses             int
 }
 
 type contextKey string
@@ -77,13 +101,14 @@ func New(cfg *config.Config, st *store.Store, keys *security.KeyManager, logger 
 		return nil, err
 	}
 	s := &Server{
-		cfg:           cfg,
-		store:         st,
-		keys:          keys,
-		templates:     tmpl,
-		logger:        logger,
-		adminSessions: map[string]model.AdminSession{},
-		oauthSessions: map[string]model.OAuthUserSession{},
+		cfg:            cfg,
+		store:          st,
+		keys:           keys,
+		templates:      tmpl,
+		logger:         logger,
+		adminSessions:  map[string]model.AdminSession{},
+		oauthSessions:  map[string]model.OAuthUserSession{},
+		pairingTickets: map[string]appPairingTicket{},
 	}
 	s.allowNewDeviceLogin.Store(false)
 	s.router = s.routes()
@@ -130,6 +155,9 @@ func (s *Server) routes() http.Handler {
 	s.mountOAuth2Routes(r, canonicalOAuth2BasePath)
 	s.mountOAuth2Routes(r, legacyOAuth2BasePath)
 
+	r.Get("/ap/ws", s.handleChatWebSocketProxy)
+	r.Handle("/ap/api/*", http.HandlerFunc(s.handleAPAPIProxy))
+
 	r.Route(adminAPIBasePath, func(ar chi.Router) {
 		ar.Post("/session/login", s.handleAdminLogin)
 		ar.Post("/bcrypt/generate", s.handleBcryptGenerate)
@@ -170,11 +198,13 @@ func (s *Server) routes() http.Handler {
 		api.Route("/auth", func(ar chi.Router) {
 			ar.Post("/login", s.handleAppLogin)
 			ar.Post("/refresh", s.handleAppRefresh)
+			ar.Post("/pairing/claim", s.handleAppPairingClaim)
 			ar.Get("/jwks", s.handleAppJWKS)
 			ar.Get("/new-device-access", s.handleAppNewDeviceAccess)
 
 			ar.Group(func(g chi.Router) {
 				g.Use(s.appBearerMiddleware)
+				g.Post("/pairing/start", s.handleAppPairingStart)
 				g.Post("/logout", s.handleAppLogout)
 				g.Get("/me", s.handleAppMe)
 				g.Get("/devices", s.handleAppDevices)
@@ -673,11 +703,15 @@ func (s *Server) loginApp(r *http.Request, enforceNewDeviceGate bool) (*appLogin
 	if err != nil {
 		return nil, &appError{status: http.StatusBadRequest, message: err.Error()}
 	}
+	return s.createAppLoginSession(req.DeviceName, accessTTL)
+}
+
+func (s *Server) createAppLoginSession(deviceName string, accessTTL time.Duration) (*appLoginResult, *appError) {
 	deviceToken, err := randomToken(32)
 	if err != nil {
 		return nil, &appError{status: http.StatusInternalServerError, message: "failed to generate token"}
 	}
-	device, err := s.store.CreateDevice(req.DeviceName, deviceToken)
+	device, err := s.store.CreateDevice(deviceName, deviceToken)
 	if err != nil {
 		return nil, &appError{status: http.StatusInternalServerError, message: "failed to create device"}
 	}
@@ -687,8 +721,8 @@ func (s *Server) loginApp(r *http.Request, enforceNewDeviceGate bool) (*appLogin
 	}
 	username := s.cfg.AppUsername
 	deviceID := device.DeviceID
-	deviceName := device.DeviceName
-	if err := s.store.RecordTokenAudit("APP_ACCESS", accessToken, &username, &deviceID, &deviceName, nil, nil, issuedAt, &expAt); err != nil {
+	auditDeviceName := device.DeviceName
+	if err := s.store.RecordTokenAudit("APP_ACCESS", accessToken, &username, &deviceID, &auditDeviceName, nil, nil, issuedAt, &expAt); err != nil {
 		s.logger.Printf("record app token audit failed: %v", err)
 	}
 	return &appLoginResult{
@@ -699,6 +733,169 @@ func (s *Server) loginApp(r *http.Request, enforceNewDeviceGate bool) (*appLogin
 		AccessTokenExpireAt: expAt,
 		DeviceToken:         deviceToken,
 	}, nil
+}
+
+func (s *Server) handleAppPairingStart(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.currentAppPrincipal(r)
+	if !ok {
+		writeAPIError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req struct {
+		DesktopIdentityCreatedAt string `json:"desktopIdentityCreatedAt"`
+		DesktopUsername          string `json:"desktopUsername"`
+		DesktopHostname          string `json:"desktopHostname"`
+		AppServerPublicKeySHA256 string `json:"appServerPublicKeySha256"`
+		APIBaseURL               string `json:"apiBaseUrl"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	pairingID := uuid.NewString()
+	secret, err := randomToken(32)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	now := time.Now().UTC()
+	ticket := appPairingTicket{
+		PairingID:                pairingID,
+		SecretSHA256:             appPairingSecretSHA256(secret),
+		DesktopDeviceID:          principal.DeviceID,
+		DesktopIdentityCreatedAt: trimPairingField(req.DesktopIdentityCreatedAt, 80),
+		DesktopUsername:          trimPairingField(req.DesktopUsername, 80),
+		DesktopHostname:          trimPairingField(req.DesktopHostname, 120),
+		AppServerIssuer:          s.cfg.Issuer,
+		AppServerPublicKeySHA256: trimPairingField(req.AppServerPublicKeySHA256, 96),
+		APIBaseURL:               trimPairingField(req.APIBaseURL, 300),
+		ExpiresAt:                now.Add(appPairingTicketTTL),
+	}
+	s.saveAppPairingTicket(ticket, now)
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"desktopDeviceId":          ticket.DesktopDeviceID,
+		"desktopIdentityCreatedAt": ticket.DesktopIdentityCreatedAt,
+		"desktopUsername":          ticket.DesktopUsername,
+		"desktopHostname":          ticket.DesktopHostname,
+		"appServerIssuer":          ticket.AppServerIssuer,
+		"appServerPublicKeySha256": ticket.AppServerPublicKeySHA256,
+		"apiBaseUrl":               ticket.APIBaseURL,
+		"pairingId":                ticket.PairingID,
+		"secret":                   secret,
+		"expiresAt":                ticket.ExpiresAt,
+	})
+}
+
+func (s *Server) handleAppPairingClaim(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PairingID        string `json:"pairingId"`
+		Secret           string `json:"secret"`
+		DeviceName       string `json:"deviceName"`
+		AccessTTLSeconds *int   `json:"accessTtlSeconds"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	pairingID := strings.TrimSpace(req.PairingID)
+	secret := strings.TrimSpace(req.Secret)
+	if pairingID == "" || secret == "" {
+		writeAPIError(w, http.StatusBadRequest, "pairingId and secret are required")
+		return
+	}
+	if _, err := uuid.Parse(pairingID); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid pairingId")
+		return
+	}
+	ticket, errMessage := s.claimAppPairingTicket(pairingID, secret, time.Now().UTC())
+	if errMessage != "" {
+		writeAPIError(w, http.StatusBadRequest, errMessage)
+		return
+	}
+	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, appErr := s.createAppLoginSession(req.DeviceName, accessTTL)
+	if appErr != nil {
+		writeAPIError(w, appErr.status, appErr.message)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"username":                 result.Username,
+		"deviceId":                 result.DeviceID,
+		"deviceName":               result.DeviceName,
+		"accessToken":              result.AccessToken,
+		"accessTokenExpireAt":      result.AccessTokenExpireAt,
+		"deviceToken":              result.DeviceToken,
+		"desktopDeviceId":          ticket.DesktopDeviceID,
+		"desktopIdentityCreatedAt": ticket.DesktopIdentityCreatedAt,
+		"desktopUsername":          ticket.DesktopUsername,
+		"desktopHostname":          ticket.DesktopHostname,
+		"appServerIssuer":          ticket.AppServerIssuer,
+		"appServerPublicKeySha256": ticket.AppServerPublicKeySHA256,
+		"apiBaseUrl":               ticket.APIBaseURL,
+	})
+}
+
+func appPairingSecretSHA256(secret string) [32]byte {
+	return sha256.Sum256([]byte(secret))
+}
+
+func trimPairingField(value string, maxRunes int) string {
+	trimmed := strings.TrimSpace(value)
+	if maxRunes <= 0 {
+		return trimmed
+	}
+	count := 0
+	for index := range trimmed {
+		if count == maxRunes {
+			return trimmed[:index]
+		}
+		count += 1
+	}
+	return trimmed
+}
+
+func (s *Server) saveAppPairingTicket(ticket appPairingTicket, now time.Time) {
+	s.pairingTicketsMu.Lock()
+	defer s.pairingTicketsMu.Unlock()
+	if s.pairingTickets == nil {
+		s.pairingTickets = map[string]appPairingTicket{}
+	}
+	for id, existing := range s.pairingTickets {
+		if !existing.ExpiresAt.After(now) {
+			delete(s.pairingTickets, id)
+		}
+	}
+	s.pairingTickets[ticket.PairingID] = ticket
+}
+
+func (s *Server) claimAppPairingTicket(pairingID, secret string, now time.Time) (appPairingTicket, string) {
+	s.pairingTicketsMu.Lock()
+	defer s.pairingTicketsMu.Unlock()
+	if s.pairingTickets == nil {
+		return appPairingTicket{}, "pairing ticket not found"
+	}
+	ticket, ok := s.pairingTickets[pairingID]
+	if !ok {
+		return appPairingTicket{}, "pairing ticket not found"
+	}
+	if !ticket.ExpiresAt.After(now) {
+		delete(s.pairingTickets, pairingID)
+		return appPairingTicket{}, "pairing ticket expired"
+	}
+	secretHash := appPairingSecretSHA256(secret)
+	if subtle.ConstantTimeCompare(secretHash[:], ticket.SecretSHA256[:]) != 1 {
+		ticket.SecretMisses += 1
+		if ticket.SecretMisses >= appPairingMaxSecretMisses {
+			delete(s.pairingTickets, pairingID)
+		} else {
+			s.pairingTickets[pairingID] = ticket
+		}
+		return appPairingTicket{}, "invalid pairing secret"
+	}
+	delete(s.pairingTickets, pairingID)
+	return ticket, ""
 }
 
 func (s *Server) handleAppRefresh(w http.ResponseWriter, r *http.Request) {

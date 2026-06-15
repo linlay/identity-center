@@ -43,6 +43,9 @@ func TestLoadUsesBuiltInDefaults(t *testing.T) {
 	t.Setenv("AUTH_TOKEN_ROTATE_REFRESH_TOKEN", "")
 	t.Setenv("AUTH_CLEANUP_RETENTION", "")
 	t.Setenv("AUTH_CLEANUP_CRON", "")
+	t.Setenv("AP_UPSTREAM_BASE_URL", "")
+	t.Setenv("CHAT_WS_UPSTREAM_URL", "")
+	t.Setenv("AP_UPSTREAM_ACCESS_TOKEN", "")
 	t.Setenv("AUTH_ADMIN_PASSWORD_BCRYPT", documentedDevBcrypt)
 	t.Setenv("AUTH_APP_MASTER_PASSWORD_BCRYPT", documentedDevBcrypt)
 
@@ -75,6 +78,12 @@ func TestLoadUsesBuiltInDefaults(t *testing.T) {
 	if cfg.FrontendDistDir != "" {
 		t.Fatalf("expected empty frontend dist dir by default, got: %s", cfg.FrontendDistDir)
 	}
+	if cfg.APUpstreamBaseURL != "" || cfg.ChatWSUpstreamURL != "" {
+		t.Fatalf("expected empty AP upstream URLs, got base=%q ws=%q", cfg.APUpstreamBaseURL, cfg.ChatWSUpstreamURL)
+	}
+	if cfg.APUpstreamAccessToken != "" {
+		t.Fatalf("expected empty AP upstream access token, got: %s", cfg.APUpstreamAccessToken)
+	}
 }
 
 func TestLoadEnvOverridesBuiltInDefaults(t *testing.T) {
@@ -94,6 +103,9 @@ func TestLoadEnvOverridesBuiltInDefaults(t *testing.T) {
 	t.Setenv("AUTH_TOKEN_ROTATE_REFRESH_TOKEN", "false")
 	t.Setenv("AUTH_CLEANUP_RETENTION", "PT6H")
 	t.Setenv("AUTH_CLEANUP_CRON", "0 */10 * * * *")
+	t.Setenv("AP_UPSTREAM_BASE_URL", "http://127.0.0.1:11949")
+	t.Setenv("CHAT_WS_UPSTREAM_URL", "http://127.0.0.1:11949/ws")
+	t.Setenv("AP_UPSTREAM_ACCESS_TOKEN", "upstream-token")
 	t.Setenv("AUTH_ADMIN_PASSWORD_BCRYPT", documentedDevBcrypt)
 	t.Setenv("AUTH_APP_MASTER_PASSWORD_BCRYPT", documentedDevBcrypt)
 
@@ -119,6 +131,12 @@ func TestLoadEnvOverridesBuiltInDefaults(t *testing.T) {
 	}
 	if cfg.CleanupRetention != 6*time.Hour || cfg.CleanupCron != "0 */10 * * * *" {
 		t.Fatalf("unexpected cleanup overrides: retention=%s cron=%s", cfg.CleanupRetention, cfg.CleanupCron)
+	}
+	if cfg.APUpstreamBaseURL != "http://127.0.0.1:11949" || cfg.ChatWSUpstreamURL != "http://127.0.0.1:11949/ws" {
+		t.Fatalf("unexpected AP upstream overrides: base=%q ws=%q", cfg.APUpstreamBaseURL, cfg.ChatWSUpstreamURL)
+	}
+	if cfg.APUpstreamAccessToken != "upstream-token" {
+		t.Fatalf("expected AP upstream access token override, got %q", cfg.APUpstreamAccessToken)
 	}
 }
 

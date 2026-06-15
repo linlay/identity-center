@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
 import path from 'node:path';
+import { normalizeViteBasePath } from './vite-base.js';
 
 function loadRootEnv(mode, cwd) {
   const rootDir = path.resolve(cwd, '..');
@@ -33,7 +34,7 @@ function createProxyEntry(target) {
 
 export default defineConfig(({ mode }) => {
   const env = loadRootEnv(mode, process.cwd());
-  const base = env.VITE_BASE_PATH || '/admin/';
+  const base = normalizeViteBasePath(env.VITE_BASE_PATH);
   const port = Number(env.VITE_DEV_PORT || env.FRONTEND_PORT || 11950);
   const strictPort = (env.VITE_DEV_STRICT_PORT || 'true').toLowerCase() !== 'false';
   const proxyPath = env.VITE_API_PROXY_PATH || '/admin/api';
