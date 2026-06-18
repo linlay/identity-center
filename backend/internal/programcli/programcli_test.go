@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"zenmind-app-server/backend/internal/db"
+	"identity-center/backend/internal/db"
 )
 
 func TestSetupPublicKeyAndIssueTokens(t *testing.T) {
@@ -117,7 +117,7 @@ func TestIssueBridgeAccessTokenUsesExplicitDeviceID(t *testing.T) {
 		"--db", dbPath,
 		"--issuer", "http://localhost:18080",
 		"--username", "app",
-		"--device-name", "ZenMind Desktop",
+		"--device-name", "Desktop",
 		"--device-id", deviceID,
 	})
 	payload := decodePayload(t, token)
@@ -147,7 +147,7 @@ func TestIssueBridgeAccessTokenUsesExplicitDeviceID(t *testing.T) {
 	if deviceCount != 1 || auditCount != 2 {
 		t.Fatalf("unexpected counts: devices=%d audits=%d", deviceCount, auditCount)
 	}
-	if deviceName != "ZenMind Desktop" {
+	if deviceName != "Desktop" {
 		t.Fatalf("expected existing device name to be preserved, got %q", deviceName)
 	}
 }
@@ -165,7 +165,7 @@ func TestIssueBridgeAccessTokenUsesDesktopDeviceIDEnv(t *testing.T) {
 		"--db", dbPath,
 		"--issuer", "http://localhost:18080",
 		"--username", "app",
-		"--device-name", "ZenMind Desktop",
+		"--device-name", "Desktop",
 	})
 	payload := decodePayload(t, token)
 	if payload["device_id"] != deviceID {
@@ -195,7 +195,7 @@ func TestIssueBridgeAccessTokenRejectsInvalidOrRevokedDeviceID(t *testing.T) {
 		"issue-bridge-access-token",
 		"--db", dbPath,
 		"--device-id", deviceID,
-		"--device-name", "ZenMind Desktop",
+		"--device-name", "Desktop",
 	})
 	conn, err := db.Open(dbPath)
 	if err != nil {
@@ -212,7 +212,7 @@ func TestIssueBridgeAccessTokenRejectsInvalidOrRevokedDeviceID(t *testing.T) {
 		"issue-bridge-access-token",
 		"--db", dbPath,
 		"--device-id", deviceID,
-		"--device-name", "ZenMind Desktop",
+		"--device-name", "Desktop",
 	}, &stdout, &stderr)
 	if err == nil || !strings.Contains(err.Error(), "not active") {
 		t.Fatalf("expected revoked device error, got err=%v stderr=%s", err, stderr.String())

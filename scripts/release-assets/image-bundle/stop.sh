@@ -23,4 +23,4 @@ FRONTEND_PORT="${FRONTEND_PORT:-11950}"
 export APP_SERVER_VERSION FRONTEND_PORT
 docker compose --project-directory "$SCRIPT_DIR" -f "$COMPOSE_FILE" down --remove-orphans
 
-echo "[stop] stopped zenmind-app-server $APP_SERVER_VERSION"
+echo "[stop] stopped identity-center $APP_SERVER_VERSION"

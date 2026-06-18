@@ -2,19 +2,19 @@ $ErrorActionPreference = 'Stop'
 
 $Script:ProgramCommonDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Script:BundleRoot = Split-Path -Parent $Script:ProgramCommonDir
-$Script:AppName = 'zenmind-app-server'
+$Script:AppName = 'identity-center'
 $Script:ManifestFile = Join-Path $Script:BundleRoot 'manifest.json'
 $Script:EnvExampleFile = Join-Path $Script:BundleRoot '.env.example'
 $Script:EnvFile = Join-Path $(if ($env:SERVICE_CONFIG_DIR) { $env:SERVICE_CONFIG_DIR } else { $Script:BundleRoot }) '.env'
-$Script:BackendBin = Join-Path (Join-Path $Script:BundleRoot 'backend') 'zenmind-app-server.exe'
+$Script:BackendBin = Join-Path (Join-Path $Script:BundleRoot 'backend') 'identity-center.exe'
 $Script:FrontendDir = Join-Path $Script:BundleRoot 'frontend'
 $Script:DistDir = Join-Path $Script:FrontendDir 'dist'
 $Script:DataDir = if ($env:SERVICE_DATA_DIR) { $env:SERVICE_DATA_DIR } else { Join-Path $Script:BundleRoot 'data' }
 $Script:RunDir = if ($env:SERVICE_STATE_DIR) { $env:SERVICE_STATE_DIR } else { Join-Path $Script:BundleRoot 'run' }
 $Script:LogDir = if ($env:SERVICE_LOG_DIR) { $env:SERVICE_LOG_DIR } else { $Script:RunDir }
-$Script:PidFile = Join-Path $Script:RunDir 'zenmind-app-server.pid'
-$Script:LogFile = Join-Path $Script:LogDir 'zenmind-app-server.log'
-$Script:ErrorLogFile = Join-Path $Script:LogDir 'zenmind-app-server.stderr.log'
+$Script:PidFile = Join-Path $Script:RunDir 'identity-center.pid'
+$Script:LogFile = Join-Path $Script:LogDir 'identity-center.log'
+$Script:ErrorLogFile = Join-Path $Script:LogDir 'identity-center.stderr.log'
 
 function Resolve-ProgramFrontendDistDir {
   $frontendDistDir = if ($env:FRONTEND_DIST_DIR) { $env:FRONTEND_DIST_DIR } else { '.\frontend\dist' }

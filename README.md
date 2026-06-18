@@ -1,8 +1,8 @@
-# zenmind-app-server
+# identity-center
 
 ## 1. 项目简介
 
-`zenmind-app-server` 是认证与管理服务，提供 OAuth2 / OIDC、管理后台、App 访问令牌和设备管理。
+`identity-center` 是认证与管理服务，提供 OAuth2 / OIDC、管理后台、App 访问令牌和设备管理。
 
 项目支持两种部署模式：Docker 容器编排（默认）和单二进制 Program Mode（用于桌面集成）。
 
@@ -96,21 +96,21 @@ make release-image VERSION=v1.0.0
 产物命名示例：
 
 ```text
-dist/release/zenmind-app-server-v1.0.0-darwin-arm64.tar.gz
-dist/release/zenmind-app-server-v1.0.0-windows-amd64.zip
-dist/release/zenmind-app-server-image-v1.0.0-linux-arm64.tar.gz
+dist/release/identity-center-v1.0.0-darwin-arm64.tar.gz
+dist/release/identity-center-v1.0.0-windows-amd64.zip
+dist/release/identity-center-image-v1.0.0-linux-arm64.tar.gz
 ```
 
 Bundle 解压后的最小内容：
 
-- Program Bundle：`manifest.json`、`backend/zenmind-app-server(.exe)`、`frontend/dist`、当前平台根目录 `start/stop/deploy`、当前平台 `scripts/`、`.env.example`
+- Program Bundle：`manifest.json`、`backend/identity-center(.exe)`、`frontend/dist`、当前平台根目录 `start/stop/deploy`、当前平台 `scripts/`、`.env.example`
 - Image Bundle：`.env.example`、`README.txt`、`load-image.sh`、`start.sh`、`stop.sh`、`compose.release.yml`、`images/`、`data/`
 
 Program Bundle 不再包含 frontend 进程；`frontend/dist` 由宿主 nginx 或等价前端网关托管，bundle 自身只负责 backend。`manifest.json` 中的 `frontend` / `api` 字段用于宿主 Node HTTP server 注册前端静态路由和 API 路由。Windows bundle 只包含 `.ps1` 入口，Darwin bundle 只包含 `.sh` 入口。
 
 ## 6. 运维
 
-- 查看日志：`docker compose logs -f app-server-backend app-server-frontend`
+- 查看日志：`docker compose logs -f identity-center-backend identity-center-frontend`
 - OIDC metadata：`curl -i http://127.0.0.1:11950/api/openid/.well-known/openid-configuration`
 - bcrypt 生成接口：`POST /admin/api/bcrypt/generate`
 

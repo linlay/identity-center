@@ -17,7 +17,7 @@ if (-not $Out) { $Out = if ($env:KEY_OUTPUT_DIR) { $env:KEY_OUTPUT_DIR } else { 
 if (-not $PublicOut) { $PublicOut = Join-Path $Out 'publicKey.pem' }
 if (-not $KeyId) { $KeyId = $env:JWK_KEY_ID }
 
-$BackendBin = Join-Path (Join-Path $RootDir 'backend') 'zenmind-app-server.exe'
+$BackendBin = Join-Path (Join-Path $RootDir 'backend') 'identity-center.exe'
 if (-not (Test-Path -LiteralPath $BackendBin -PathType Leaf)) {
     Write-Error "Backend binary not found at $BackendBin. Please build the backend first."
     exit 1

@@ -20,8 +20,8 @@ require_file "$IMAGE_ASSETS_DIR/issue-bridge-access-token.sh"
 require_file "$IMAGE_ASSETS_DIR/issue-bridge-runner-token.sh"
 
 PLATFORM="linux/$ARCH"
-BACKEND_IMAGE="app-server-backend:$VERSION"
-FRONTEND_IMAGE="app-server-frontend:$VERSION"
+BACKEND_IMAGE="identity-center-backend:$VERSION"
+FRONTEND_IMAGE="identity-center-frontend:$VERSION"
 IMAGE_ARCHIVE_NAME="${APP_NAME}-image-${VERSION}-linux-${ARCH}.tar.gz"
 IMAGE_BUNDLE_NAME="$(image_bundle_filename "$VERSION" "linux" "$ARCH")"
 
@@ -38,7 +38,7 @@ if [[ "$RELEASE_DRY_RUN" == "1" ]]; then
 fi
 
 ensure_release_dist
-TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zenmind-image-release.XXXXXX")"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/identity-center-image-release.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 BUNDLE_STAGE="$TMP_DIR/$APP_NAME"

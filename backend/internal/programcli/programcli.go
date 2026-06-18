@@ -13,9 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 
-	"zenmind-app-server/backend/internal/db"
-	"zenmind-app-server/backend/internal/security"
-	"zenmind-app-server/backend/internal/store"
+	"identity-center/backend/internal/db"
+	"identity-center/backend/internal/security"
+	"identity-center/backend/internal/store"
 )
 
 const placeholderDeviceTokenBcrypt = "$2a$10$7J8GmW8J0tR9o5Z8L4m5Uuu6fQW4j6mJjM7qY0Q8n2rM5b3y1fVwK"

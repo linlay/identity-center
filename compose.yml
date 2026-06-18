@@ -1,10 +1,10 @@
 services:
-  app-server-backend:
-    image: app-server-backend
+  identity-center-backend:
+    image: identity-center-backend
     restart: unless-stopped
     build:
       context: ./backend
-    container_name: app-server-backend
+    container_name: identity-center-backend
     env_file:
       - ./.env
     environment:
@@ -14,25 +14,25 @@ services:
     expose:
       - "8080"
     networks:
-      zenmind-network:
+      identity-center-network:
         aliases:
-          - app-server-backend
+          - identity-center-backend
 
-  app-server-frontend:
-    image: app-server-frontend
+  identity-center-frontend:
+    image: identity-center-frontend
     restart: unless-stopped
     build:
       context: ./frontend
-    container_name: app-server-frontend
+    container_name: identity-center-frontend
     depends_on:
-      - app-server-backend
+      - identity-center-backend
     ports:
       - "${FRONTEND_PORT}:80"
     networks:
-      zenmind-network:
+      identity-center-network:
         aliases:
-          - app-server-frontend
+          - identity-center-frontend
 
 networks:
-  zenmind-network:
+  identity-center-network:
     external: true

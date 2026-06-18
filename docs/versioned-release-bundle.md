@@ -31,7 +31,7 @@ Darwin / Linux：
     issue-bridge-access-token.sh
     issue-bridge-runner-token.sh
   backend/
-    zenmind-app-server
+    identity-center
   frontend/
     dist/
       index.html
@@ -53,7 +53,7 @@ Windows：
     issue-bridge-access-token.ps1
     issue-bridge-runner-token.ps1
   backend/
-    zenmind-app-server.exe
+    identity-center.exe
   frontend/
     dist/
       index.html
@@ -66,7 +66,7 @@ Windows：
 - `.env.example`
 - 当前平台对应的 `start` / `stop` / `deploy` 入口
 - 当前平台对应的 `scripts/`
-- `backend/zenmind-app-server` 或 `backend/zenmind-app-server.exe`
+- `backend/identity-center` 或 `backend/identity-center.exe`
 - `frontend/dist/index.html`
 - `frontend/dist/assets/`
 
@@ -82,14 +82,14 @@ Windows：
 - `.env.example`：运行时配置模板
 - `start.*` / `stop.*` / `deploy.*`：当前平台标准入口，默认只管理 backend
 - `scripts/`：当前平台辅助脚本与公共脚本；辅助脚本优先委托 backend 二进制执行 key/token 生成
-- `backend/zenmind-app-server(.exe)`：后端主程序
+- `backend/identity-center(.exe)`：后端主程序
 - `frontend/dist/`：前端构建产物，由宿主 nginx、Node HTTP server 或等价前端网关托管
 - `data/`：运行期数据目录，默认由脚本在首次运行时创建
 - `run/`：运行期 backend pid / log 目录，默认由脚本在首次运行时创建
 
 约束：
 
-- Program Bundle 根目录名仍为 `zenmind-app-server/`
+- Program Bundle 根目录名仍为 `identity-center/`
 - bundle 默认不包含 `frontend/nginx.conf`
 - bundle 默认不包含 `configs/runtime.env.example`
 - bundle 默认不预置空的 `data/`、`run/`、`logs/`
@@ -102,8 +102,8 @@ Windows：
 
 ```json
 {
-  "id": "zenmind-app-server",
-  "name": "zenmind-app-server",
+  "id": "identity-center",
+  "name": "identity-center",
   "version": "v1.0.0",
   "platform": {
     "os": "darwin",
@@ -121,7 +121,7 @@ Windows：
     "oauth2BaseUrl": "/api/oauth2/"
   },
   "backend": {
-    "entry": "backend/zenmind-app-server"
+    "entry": "backend/identity-center"
   },
   "scripts": {
     "start": "start.sh",
@@ -135,8 +135,8 @@ Windows 示例：
 
 ```json
 {
-  "id": "zenmind-app-server",
-  "name": "zenmind-app-server",
+  "id": "identity-center",
+  "name": "identity-center",
   "version": "v1.0.0",
   "platform": {
     "os": "windows",
@@ -154,7 +154,7 @@ Windows 示例：
     "oauth2BaseUrl": "/api/oauth2/"
   },
   "backend": {
-    "entry": "backend/zenmind-app-server.exe"
+    "entry": "backend/identity-center.exe"
   },
   "scripts": {
     "start": "start.ps1",
@@ -211,14 +211,14 @@ Windows 示例：
 
 当前仓库采用以下交付命名：
 
-- Program Bundle：`zenmind-app-server-vX.Y.Z-<os>-<arch>.<ext>`
-- Image Bundle：`zenmind-app-server-image-vX.Y.Z-linux-<arch>.tar.gz`
+- Program Bundle：`identity-center-vX.Y.Z-<os>-<arch>.<ext>`
+- Image Bundle：`identity-center-image-vX.Y.Z-linux-<arch>.tar.gz`
 
 示例：
 
-- `zenmind-app-server-v1.0.0-darwin-arm64.tar.gz`
-- `zenmind-app-server-v1.0.0-windows-amd64.zip`
-- `zenmind-app-server-image-v1.0.0-linux-arm64.tar.gz`
+- `identity-center-v1.0.0-darwin-arm64.tar.gz`
+- `identity-center-v1.0.0-windows-amd64.zip`
+- `identity-center-image-v1.0.0-linux-arm64.tar.gz`
 
 命名规则：
 
@@ -264,7 +264,7 @@ Windows 示例：
 - Image 外层文件名使用 `image`，不使用 `image-bundle`
 - 前端产物位于 `frontend/dist/`
 - bundle 不包含 `frontend-gateway(.exe)`
-- 后端主程序位于 `backend/zenmind-app-server(.exe)`
+- 后端主程序位于 `backend/identity-center(.exe)`
 - bundle 根目录包含 `.env.example`
 - bundle 根目录只包含当前平台的 `start` / `stop` / `deploy`
 - `scripts/` 只包含当前平台 helper

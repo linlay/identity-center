@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROGRAM_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE_ROOT="$(cd "$PROGRAM_COMMON_DIR/.." && pwd)"
-APP_NAME="zenmind-app-server"
+APP_NAME="identity-center"
 MANIFEST_FILE="$BUNDLE_ROOT/manifest.json"
 ENV_EXAMPLE_FILE="$BUNDLE_ROOT/.env.example"
 ENV_FILE="${SERVICE_CONFIG_DIR:-$BUNDLE_ROOT}/.env"

@@ -16,7 +16,7 @@ if (-not $Issuer) { $Issuer = if ($env:AUTH_ISSUER) { $env:AUTH_ISSUER } else { 
 if (-not $Username) { $Username = if ($env:AUTH_APP_USERNAME) { $env:AUTH_APP_USERNAME } else { 'app' } }
 if (-not $DeviceId -and $env:DESKTOP_DEVICE_ID) { $DeviceId = $env:DESKTOP_DEVICE_ID }
 
-$BackendBin = Join-Path (Join-Path $RootDir 'backend') 'zenmind-app-server.exe'
+$BackendBin = Join-Path (Join-Path $RootDir 'backend') 'identity-center.exe'
 if (-not (Test-Path -LiteralPath $BackendBin -PathType Leaf)) {
     Write-Error "Backend binary not found at $BackendBin. Please build the backend first."
     exit 1

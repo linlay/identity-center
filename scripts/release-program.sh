@@ -65,7 +65,7 @@ if [[ "$RELEASE_DRY_RUN" == "1" ]]; then
 fi
 
 ensure_release_dist
-TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zenmind-program-release.XXXXXX")"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/identity-center-program-release.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 FRONTEND_DIST_DIR="$TMP_DIR/frontend-dist"

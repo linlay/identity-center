@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$TestRoot = Join-Path $env:TEMP "zenmind-e2e-$(Get-Random)"
+$TestRoot = Join-Path $env:TEMP "identity-center-e2e-$(Get-Random)"
 Write-Host "[e2e] Test root: $TestRoot"
 
 $DbPath = Join-Path $TestRoot 'auth.db'

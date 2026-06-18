@@ -22,8 +22,8 @@ docker-down:
 	docker compose down
 
 size-check:
-	@echo "backend image size bytes:" && docker image inspect app-server-backend --format '{{.Size}}'
-	@echo "frontend image size bytes:" && docker image inspect app-server-frontend --format '{{.Size}}'
+	@echo "backend image size bytes:" && docker image inspect identity-center-backend --format '{{.Size}}'
+	@echo "frontend image size bytes:" && docker image inspect identity-center-frontend --format '{{.Size}}'
 
 release:
 	$(MAKE) release-program VERSION=$(VERSION) ARCH=$(ARCH) PROGRAM_TARGETS="$(PROGRAM_TARGETS)" PROGRAM_TARGET_MATRIX="$(PROGRAM_TARGET_MATRIX)"

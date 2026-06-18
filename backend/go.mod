@@ -1,4 +1,4 @@
-module zenmind-app-server/backend
+module identity-center/backend
 
 go 1.23.0
 

@@ -2,7 +2,7 @@
 
 ## 1. 项目概览
 
-`zenmind-app-server` 是一套认证与管理服务，提供 OAuth2 / OIDC、管理后台、App 访问令牌和设备管理。
+`identity-center` 是一套认证与管理服务，提供 OAuth2 / OIDC、管理后台、App 访问令牌和设备管理。
 
 仓库采用双容器 fullstack 结构：
 

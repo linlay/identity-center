@@ -14,10 +14,10 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"zenmind-app-server/backend/internal/config"
-	"zenmind-app-server/backend/internal/db"
-	"zenmind-app-server/backend/internal/security"
-	"zenmind-app-server/backend/internal/store"
+	"identity-center/backend/internal/config"
+	"identity-center/backend/internal/db"
+	"identity-center/backend/internal/security"
+	"identity-center/backend/internal/store"
 )
 
 func newPairingTestServer(t *testing.T) (*Server, func()) {
@@ -56,7 +56,7 @@ func createDesktopBearerToken(t *testing.T, s *Server, desktopDeviceID string) s
 	if err != nil {
 		t.Fatalf("hash device token: %v", err)
 	}
-	if _, err := s.store.EnsureActiveDeviceWithID(desktopDeviceID, "ZenMind Desktop", string(tokenHash)); err != nil {
+	if _, err := s.store.EnsureActiveDeviceWithID(desktopDeviceID, "Desktop", string(tokenHash)); err != nil {
 		t.Fatalf("create desktop device: %v", err)
 	}
 	token, _, _, err := s.issueAppAccessToken(s.cfg.AppUsername, desktopDeviceID, time.Hour)

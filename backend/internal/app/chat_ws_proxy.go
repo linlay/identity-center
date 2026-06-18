@@ -15,7 +15,7 @@ import (
 
 const chatWSProxyDialTimeout = 5 * time.Second
 const apAPIPathPrefix = "/ap/api"
-const appAuthScopeHeader = "X-Zenmind-Auth-Scope"
+const appAuthScopeHeader = "X-Identity-Center-Auth-Scope"
 const appAuthScopeValue = "app"
 
 var chatWSStripHeaders = map[string]struct{}{

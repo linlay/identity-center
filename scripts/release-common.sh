@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RELEASE_ASSETS_DIR="$SCRIPT_DIR/release-assets"
 RELEASE_DIST_DIR="$REPO_ROOT/dist/release"
-APP_NAME="zenmind-app-server"
+APP_NAME="identity-center"
 DEFAULT_PROGRAM_TARGET_MATRIX="darwin/arm64,windows/amd64"
 
 die() { echo "[release] $*" >&2; exit 1; }
@@ -253,9 +253,9 @@ write_program_manifest() {
     }
   ],
   "runtime": {
-    "pidRelativePath": "run/zenmind-app-server.pid",
-    "logRelativePath": "run/zenmind-app-server.log",
-    "errorLogRelativePath": "run/zenmind-app-server.stderr.log",
+    "pidRelativePath": "run/identity-center.pid",
+    "logRelativePath": "run/identity-center.log",
+    "errorLogRelativePath": "run/identity-center.stderr.log",
     "requiredPaths": [
       "$backend_entry",
       "$start_script",

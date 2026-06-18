@@ -1,9 +1,9 @@
-name: zenmind-app-server
+name: identity-center
 
 services:
-  app-server-backend:
-    container_name: app-server-backend
-    image: app-server-backend:${APP_SERVER_VERSION:-latest}
+  identity-center-backend:
+    container_name: identity-center-backend
+    image: identity-center-backend:${APP_SERVER_VERSION:-latest}
     env_file:
       - path: .env
         format: raw
@@ -14,10 +14,10 @@ services:
     expose:
       - "8080"
 
-  app-server-frontend:
-    container_name: app-server-frontend
-    image: app-server-frontend:${APP_SERVER_VERSION:-latest}
+  identity-center-frontend:
+    container_name: identity-center-frontend
+    image: identity-center-frontend:${APP_SERVER_VERSION:-latest}
     depends_on:
-      - app-server-backend
+      - identity-center-backend
     ports:
       - "${FRONTEND_PORT:-11950}:80"

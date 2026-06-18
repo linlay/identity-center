@@ -15,7 +15,7 @@ set +a
 
 APP_SERVER_VERSION="${APP_SERVER_VERSION:-latest}"
 shopt -s nullglob
-matches=("$SCRIPT_DIR"/images/zenmind-app-server-image-"${APP_SERVER_VERSION}"-linux-*.tar.gz)
+matches=("$SCRIPT_DIR"/images/identity-center-image-"${APP_SERVER_VERSION}"-linux-*.tar.gz)
 shopt -u nullglob
 [[ "${#matches[@]}" -eq 1 ]] || die "expected exactly one image archive for version ${APP_SERVER_VERSION} in images/"
 IMAGE_ARCHIVE="${matches[0]}"

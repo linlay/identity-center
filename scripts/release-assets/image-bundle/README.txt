@@ -1,4 +1,4 @@
-zenmind-app-server — Image Bundle
+identity-center — Image Bundle
 
 本文件只说明 image bundle 解压后的最小操作。该 bundle 用于离线导入镜像并运行 compose。
 

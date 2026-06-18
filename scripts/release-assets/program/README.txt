@@ -1,4 +1,4 @@
-zenmind-app-server — Program Bundle
+identity-center — Program Bundle
 
 本部署包用于宿主机程序部署，不依赖 Docker。
 前端静态资源位于 `frontend/dist`，供外部宿主 nginx 或等价网关托管。
@@ -38,7 +38,7 @@ run/                          — 运行期自动创建的 backend pid 与日志
 scripts/setup-public-key.{sh|ps1}           — 导出 JWK 公私钥与 publicKey.pem
 scripts/issue-bridge-access-token.{sh|ps1}  — 生成供 bridge 调用的 app access token
 scripts/issue-bridge-runner-token.{sh|ps1}  — 生成供内部 bridge 调 runner 使用的带 exp app access token
-backend/zenmind-app-server(.exe) <command>  — 直接执行上述辅助能力，不依赖外部 openssl / sqlite3 命令
+backend/identity-center(.exe) <command>  — 直接执行上述辅助能力，不依赖外部 openssl / sqlite3 命令
 
 bridge token 设备标识
 ====================

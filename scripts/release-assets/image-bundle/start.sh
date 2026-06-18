@@ -21,8 +21,8 @@ set +a
 
 APP_SERVER_VERSION="${APP_SERVER_VERSION:-latest}"
 FRONTEND_PORT="${FRONTEND_PORT:-11950}"
-BACKEND_IMAGE="app-server-backend:$APP_SERVER_VERSION"
-FRONTEND_IMAGE="app-server-frontend:$APP_SERVER_VERSION"
+BACKEND_IMAGE="identity-center-backend:$APP_SERVER_VERSION"
+FRONTEND_IMAGE="identity-center-frontend:$APP_SERVER_VERSION"
 
 if ! docker image inspect "$BACKEND_IMAGE" >/dev/null 2>&1 || ! docker image inspect "$FRONTEND_IMAGE" >/dev/null 2>&1; then
   "$LOAD_SCRIPT"
@@ -33,5 +33,5 @@ mkdir -p "$SCRIPT_DIR/data"
 export APP_SERVER_VERSION FRONTEND_PORT
 docker compose --project-directory "$SCRIPT_DIR" -f "$COMPOSE_FILE" up -d
 
-echo "[start] started zenmind-app-server $APP_SERVER_VERSION"
+echo "[start] started identity-center $APP_SERVER_VERSION"
 echo "[start] browser: http://127.0.0.1:${FRONTEND_PORT}/admin/"

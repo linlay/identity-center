@@ -16,10 +16,10 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"zenmind-app-server/backend/internal/config"
-	"zenmind-app-server/backend/internal/db"
-	"zenmind-app-server/backend/internal/security"
-	"zenmind-app-server/backend/internal/store"
+	"identity-center/backend/internal/config"
+	"identity-center/backend/internal/db"
+	"identity-center/backend/internal/security"
+	"identity-center/backend/internal/store"
 )
 
 func setChatWebSocketUpgradeHeaders(h http.Header) {

@@ -16,7 +16,7 @@ function resolveProxyTarget(env, cwd) {
     return localFallback;
   }
 
-  const isBackendHost = /:\/\/(?:backend|app-server-backend)(?::|\/|$)/.test(configured);
+  const isBackendHost = /:\/\/(?:backend|identity-center-backend)(?::|\/|$)/.test(configured);
   const runningInContainer = fs.existsSync('/.dockerenv');
   if (isBackendHost && !runningInContainer) {
     return localFallback;

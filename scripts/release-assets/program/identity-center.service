@@ -1,0 +1,14 @@
+[Unit]
+Description=identity-center program bundle
+After=network.target
+
+[Service]
+Type=forking
+WorkingDirectory=/opt/identity-center
+ExecStart=/opt/identity-center/start.sh
+ExecStop=/opt/identity-center/stop.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
