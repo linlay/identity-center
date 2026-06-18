@@ -99,11 +99,11 @@ func TestAppPairingStartAndClaimAreOneTime(t *testing.T) {
 	handler := s.Handler()
 
 	startRR := postJSON(t, handler, "/api/auth/pairing/start", bearer, map[string]any{
-		"desktopIdentityCreatedAt": "2026-06-01T00:00:00.000Z",
-		"desktopUsername":          "alice",
-		"desktopHostname":          "workstation",
-		"appServerPublicKeySha256": "abc123",
-		"apiBaseUrl":               "http://127.0.0.1:8080",
+		"desktopIdentityCreatedAt":      "2026-06-01T00:00:00.000Z",
+		"desktopUsername":               "alice",
+		"desktopHostname":               "workstation",
+		"identityCenterPublicKeySha256": "abc123",
+		"apiBaseUrl":                    "http://127.0.0.1:8080",
 	})
 	if startRR.Code != http.StatusCreated {
 		t.Fatalf("expected start status 201, got %d body=%s", startRR.Code, startRR.Body.String())

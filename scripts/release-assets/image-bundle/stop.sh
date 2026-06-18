@@ -17,10 +17,10 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
-APP_SERVER_VERSION="${APP_SERVER_VERSION:-latest}"
+IDENTITY_CENTER_VERSION="${IDENTITY_CENTER_VERSION:-latest}"
 FRONTEND_PORT="${FRONTEND_PORT:-11950}"
 
-export APP_SERVER_VERSION FRONTEND_PORT
+export IDENTITY_CENTER_VERSION FRONTEND_PORT
 docker compose --project-directory "$SCRIPT_DIR" -f "$COMPOSE_FILE" down --remove-orphans
 
-echo "[stop] stopped identity-center $APP_SERVER_VERSION"
+echo "[stop] stopped identity-center $IDENTITY_CENTER_VERSION"

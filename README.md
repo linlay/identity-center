@@ -65,7 +65,7 @@ make release-image
 ## 3. 配置说明
 
 - 环境变量契约以根目录 `.env.example` 为准
-- `APP_SERVER_VERSION` 用于 release bundle 选择镜像标签
+- `IDENTITY_CENTER_VERSION` 用于 release bundle 选择镜像标签
 - 部署层只保留 `FRONTEND_PORT`；backend 不再暴露宿主机端口
 - `BACKEND_PORT` 不再是有效部署变量；backend 容器内固定监听 `8080`
 - `AUTH_ISSUER` 仍然必需，因为服务会用它生成 OIDC / OAuth2 metadata

@@ -75,17 +75,17 @@ type Server struct {
 }
 
 type appPairingTicket struct {
-	PairingID                string
-	SecretSHA256             [32]byte
-	DesktopDeviceID          string
-	DesktopIdentityCreatedAt string
-	DesktopUsername          string
-	DesktopHostname          string
-	AppServerIssuer          string
-	AppServerPublicKeySHA256 string
-	APIBaseURL               string
-	ExpiresAt                time.Time
-	SecretMisses             int
+	PairingID                     string
+	SecretSHA256                  [32]byte
+	DesktopDeviceID               string
+	DesktopIdentityCreatedAt      string
+	DesktopUsername               string
+	DesktopHostname               string
+	IdentityCenterIssuer          string
+	IdentityCenterPublicKeySHA256 string
+	APIBaseURL                    string
+	ExpiresAt                     time.Time
+	SecretMisses                  int
 }
 
 type contextKey string
@@ -742,11 +742,11 @@ func (s *Server) handleAppPairingStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		DesktopIdentityCreatedAt string `json:"desktopIdentityCreatedAt"`
-		DesktopUsername          string `json:"desktopUsername"`
-		DesktopHostname          string `json:"desktopHostname"`
-		AppServerPublicKeySHA256 string `json:"appServerPublicKeySha256"`
-		APIBaseURL               string `json:"apiBaseUrl"`
+		DesktopIdentityCreatedAt      string `json:"desktopIdentityCreatedAt"`
+		DesktopUsername               string `json:"desktopUsername"`
+		DesktopHostname               string `json:"desktopHostname"`
+		IdentityCenterPublicKeySHA256 string `json:"identityCenterPublicKeySha256"`
+		APIBaseURL                    string `json:"apiBaseUrl"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -759,29 +759,29 @@ func (s *Server) handleAppPairingStart(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	ticket := appPairingTicket{
-		PairingID:                pairingID,
-		SecretSHA256:             appPairingSecretSHA256(secret),
-		DesktopDeviceID:          principal.DeviceID,
-		DesktopIdentityCreatedAt: trimPairingField(req.DesktopIdentityCreatedAt, 80),
-		DesktopUsername:          trimPairingField(req.DesktopUsername, 80),
-		DesktopHostname:          trimPairingField(req.DesktopHostname, 120),
-		AppServerIssuer:          s.cfg.Issuer,
-		AppServerPublicKeySHA256: trimPairingField(req.AppServerPublicKeySHA256, 96),
-		APIBaseURL:               trimPairingField(req.APIBaseURL, 300),
-		ExpiresAt:                now.Add(appPairingTicketTTL),
+		PairingID:                     pairingID,
+		SecretSHA256:                  appPairingSecretSHA256(secret),
+		DesktopDeviceID:               principal.DeviceID,
+		DesktopIdentityCreatedAt:      trimPairingField(req.DesktopIdentityCreatedAt, 80),
+		DesktopUsername:               trimPairingField(req.DesktopUsername, 80),
+		DesktopHostname:               trimPairingField(req.DesktopHostname, 120),
+		IdentityCenterIssuer:          s.cfg.Issuer,
+		IdentityCenterPublicKeySHA256: trimPairingField(req.IdentityCenterPublicKeySHA256, 96),
+		APIBaseURL:                    trimPairingField(req.APIBaseURL, 300),
+		ExpiresAt:                     now.Add(appPairingTicketTTL),
 	}
 	s.saveAppPairingTicket(ticket, now)
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"desktopDeviceId":          ticket.DesktopDeviceID,
-		"desktopIdentityCreatedAt": ticket.DesktopIdentityCreatedAt,
-		"desktopUsername":          ticket.DesktopUsername,
-		"desktopHostname":          ticket.DesktopHostname,
-		"appServerIssuer":          ticket.AppServerIssuer,
-		"appServerPublicKeySha256": ticket.AppServerPublicKeySHA256,
-		"apiBaseUrl":               ticket.APIBaseURL,
-		"pairingId":                ticket.PairingID,
-		"secret":                   secret,
-		"expiresAt":                ticket.ExpiresAt,
+		"desktopDeviceId":               ticket.DesktopDeviceID,
+		"desktopIdentityCreatedAt":      ticket.DesktopIdentityCreatedAt,
+		"desktopUsername":               ticket.DesktopUsername,
+		"desktopHostname":               ticket.DesktopHostname,
+		"identityCenterIssuer":          ticket.IdentityCenterIssuer,
+		"identityCenterPublicKeySha256": ticket.IdentityCenterPublicKeySHA256,
+		"apiBaseUrl":                    ticket.APIBaseURL,
+		"pairingId":                     ticket.PairingID,
+		"secret":                        secret,
+		"expiresAt":                     ticket.ExpiresAt,
 	})
 }
 
@@ -821,19 +821,19 @@ func (s *Server) handleAppPairingClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"username":                 result.Username,
-		"deviceId":                 result.DeviceID,
-		"deviceName":               result.DeviceName,
-		"accessToken":              result.AccessToken,
-		"accessTokenExpireAt":      result.AccessTokenExpireAt,
-		"deviceToken":              result.DeviceToken,
-		"desktopDeviceId":          ticket.DesktopDeviceID,
-		"desktopIdentityCreatedAt": ticket.DesktopIdentityCreatedAt,
-		"desktopUsername":          ticket.DesktopUsername,
-		"desktopHostname":          ticket.DesktopHostname,
-		"appServerIssuer":          ticket.AppServerIssuer,
-		"appServerPublicKeySha256": ticket.AppServerPublicKeySHA256,
-		"apiBaseUrl":               ticket.APIBaseURL,
+		"username":                      result.Username,
+		"deviceId":                      result.DeviceID,
+		"deviceName":                    result.DeviceName,
+		"accessToken":                   result.AccessToken,
+		"accessTokenExpireAt":           result.AccessTokenExpireAt,
+		"deviceToken":                   result.DeviceToken,
+		"desktopDeviceId":               ticket.DesktopDeviceID,
+		"desktopIdentityCreatedAt":      ticket.DesktopIdentityCreatedAt,
+		"desktopUsername":               ticket.DesktopUsername,
+		"desktopHostname":               ticket.DesktopHostname,
+		"identityCenterIssuer":          ticket.IdentityCenterIssuer,
+		"identityCenterPublicKeySha256": ticket.IdentityCenterPublicKeySHA256,
+		"apiBaseUrl":                    ticket.APIBaseURL,
 	})
 }
 
