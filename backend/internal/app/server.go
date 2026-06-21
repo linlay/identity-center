@@ -180,6 +180,7 @@ func (s *Server) routes() http.Handler {
 			pr.Put("/clients/{clientId}", s.handleUpdateClient)
 			pr.Patch("/clients/{clientId}/status", s.handlePatchClientStatus)
 			pr.Post("/clients/{clientId}/secret/rotate", s.handleRotateClientSecret)
+			pr.Post("/security/app-tokens/issue", s.handleAdminIssueAppToken)
 			pr.Post("/security/app-tokens/refresh", s.handleAdminRefreshAppToken)
 			pr.Get("/security/app-devices", s.handleAdminListAppDevices)
 			pr.Post("/security/app-devices/{deviceId}/revoke", s.handleAdminRevokeAppDevice)
@@ -190,18 +191,10 @@ func (s *Server) routes() http.Handler {
 			pr.Post("/security/key-pair/generate", s.handleAdminGenerateKeyPair)
 			pr.Get("/security/key-pair/export", s.handleAdminExportKeyPair)
 			pr.Get("/security/tokens", s.handleAdminListTokenAudits)
-			pr.Get("/tunnel/overview", s.handleAdminTunnelOverview)
-			pr.Get("/tunnel/desktops", s.handleAdminTunnelDesktops)
-			pr.Post("/tunnel/desktops/{deviceId}/close", s.handleAdminTunnelDesktopClose)
-			pr.Patch("/tunnel/desktops/{deviceId}", s.handleAdminTunnelDesktopPatch)
-			pr.Get("/tunnel/webapps", s.handleAdminTunnelWebapps)
-			pr.Get("/tunnel/activity", s.handleAdminTunnelActivity)
 		})
 	})
 
 	r.Route("/api", func(api chi.Router) {
-		api.Post("/desktop/devices/register", s.handleDesktopDeviceRegister)
-
 		api.Route("/auth", func(ar chi.Router) {
 			ar.Post("/login", s.handleAppLogin)
 			ar.Post("/refresh", s.handleAppRefresh)

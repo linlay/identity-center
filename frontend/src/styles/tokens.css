@@ -1,31 +1,29 @@
 :root {
   --font-ui: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
-  --text-primary: #17202c;
-  --text-secondary: #455466;
-  --text-muted: #768393;
+  --text-primary: #17233a;
+  --text-secondary: #4e5f7c;
+  --text-muted: #6c7d98;
 
-  --bg-canvas: #f5f7fa;
-  --bg-layer: #ffffff;
-  --bg-card: #ffffff;
-  --bg-card-solid: #ffffff;
-  --bg-subtle: #eef3f7;
+  --bg-canvas: #edf2fb;
+  --bg-layer: rgba(255, 255, 255, 0.68);
+  --bg-card: rgba(255, 255, 255, 0.82);
+  --bg-card-solid: rgba(248, 252, 255, 0.95);
 
-  --line-soft: rgba(30, 42, 58, 0.1);
-  --line-strong: rgba(30, 42, 58, 0.18);
+  --line-soft: rgba(44, 74, 126, 0.12);
+  --line-strong: rgba(44, 74, 126, 0.22);
 
-  --primary: #126fd6;
-  --primary-strong: #0d57ae;
-  --secondary: #59687a;
-  --danger: #c73f52;
-  --success: #218764;
-  --warning: #b7791f;
+  --primary: #1a73e8;
+  --primary-strong: #0f5bc2;
+  --secondary: #5f7393;
+  --danger: #d03b54;
+  --success: #1f8d66;
 
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 8px;
+  --radius-sm: 9px;
+  --radius-md: 13px;
+  --radius-lg: 18px;
 
-  --shadow-sm: 0 1px 2px rgba(24, 34, 48, 0.08);
-  --shadow-md: 0 10px 28px rgba(24, 34, 48, 0.1);
+  --shadow-sm: 0 1px 2px rgba(26, 46, 86, 0.1);
+  --shadow-md: 0 12px 30px rgba(26, 46, 86, 0.12);
 
   --space-1: 6px;
   --space-2: 10px;
@@ -36,29 +34,4 @@
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-:root[data-theme="dark"] {
-  --text-primary: #edf2f7;
-  --text-secondary: #bcc7d3;
-  --text-muted: #8d9aaa;
-
-  --bg-canvas: #101317;
-  --bg-layer: #171c22;
-  --bg-card: #1b2027;
-  --bg-card-solid: #20262e;
-  --bg-subtle: #252d36;
-
-  --line-soft: rgba(225, 232, 240, 0.1);
-  --line-strong: rgba(225, 232, 240, 0.18);
-
-  --primary: #62a8ff;
-  --primary-strong: #2f80ed;
-  --secondary: #7d8998;
-  --danger: #ff6f86;
-  --success: #54c99b;
-  --warning: #e3b45d;
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
-  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.32);
 }

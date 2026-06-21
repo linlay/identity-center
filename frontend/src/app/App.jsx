@@ -3,7 +3,6 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { LoginPage } from '../features/auth/LoginPage';
 import { getErrorMessage, isHandledUnauthorizedError, request, subscribeUnauthorized } from '../shared/api/apiClient';
 import { useAuthSession } from '../shared/hooks/useAuthSession';
-import { useI18n } from '../shared/i18n/I18nProvider';
 import { LoadingOverlay } from '../shared/ui/LoadingOverlay';
 import { ToastViewport } from '../shared/ui/ToastViewport';
 import { toast } from '../shared/ui/toast';
@@ -14,7 +13,6 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const { loading, session, setSession } = useAuthSession();
-  const { t } = useI18n();
   const unauthorizedRedirectingRef = useRef(false);
 
   const logout = async () => {
@@ -22,10 +20,10 @@ export default function App() {
       await request('/session/logout', { method: 'POST' });
       setSession(null);
       navigate('/login');
-      toast.success(t('app.signedOut'));
+      toast.success('Signed out');
     } catch (err) {
       if (!isHandledUnauthorizedError(err)) {
-        toast.error(getErrorMessage(err, t('app.signOutFailed')));
+        toast.error(getErrorMessage(err, 'Sign out failed'));
       }
     }
   };
@@ -38,11 +36,11 @@ export default function App() {
       unauthorizedRedirectingRef.current = true;
       setSession(null);
       if (location.pathname !== '/login') {
-        toast.error(t('app.sessionExpired'));
+        toast.error('会话已过期，请重新登录');
       }
       navigate('/login', { replace: true });
     });
-  }, [location.pathname, navigate, setSession, t]);
+  }, [location.pathname, navigate, setSession]);
 
   useEffect(() => {
     if (location.pathname === '/login') {
@@ -53,7 +51,7 @@ export default function App() {
   if (loading) {
     return (
       <>
-        <LoadingOverlay show label={t('app.loadingSession')} />
+        <LoadingOverlay show label="Checking session..." />
         <ToastViewport />
       </>
     );

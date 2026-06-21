@@ -1,15 +1,13 @@
-import {
-  TunnelActivityPage,
-  TunnelDesktopsPage,
-  TunnelOverviewPage,
-  TunnelWebappsPage
-} from '../features/tunnel/TunnelPages';
+import { AccountsPage } from '../features/accounts/AccountsPage';
+import { AppAccessPage } from '../features/access/AppAccessPage';
+import { SecurityPage } from '../features/security/SecurityPage';
+import { ToolsPage } from '../features/tools/ToolsPage';
 
 export const protectedRoutes = [
-  { path: '/overview', labelKey: 'nav.overview', element: <TunnelOverviewPage /> },
-  { path: '/desktops', labelKey: 'nav.desktops', element: <TunnelDesktopsPage /> },
-  { path: '/webapps', labelKey: 'nav.webapps', element: <TunnelWebappsPage /> },
-  { path: '/activity', labelKey: 'nav.activity', element: <TunnelActivityPage /> }
+  { path: '/accounts', label: 'Accounts', element: <AccountsPage /> },
+  { path: '/security', label: 'Security', element: <SecurityPage /> },
+  { path: '/app-access', label: 'Access', element: <AppAccessPage /> },
+  { path: '/tools', label: 'Tools', element: <ToolsPage /> }
 ];
 
-export const defaultProtectedPath = '/overview';
+export const defaultProtectedPath = '/accounts';
