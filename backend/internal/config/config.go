@@ -61,6 +61,8 @@ type Config struct {
 	APUpstreamBaseURL     string
 	ChatWSUpstreamURL     string
 	APUpstreamAccessToken string
+	TunnelHubBaseDomain   string
+	TunnelHubRelayURL     string
 
 	AdminUsername       string
 	AdminPasswordBcrypt string
@@ -91,6 +93,8 @@ func Load() (*Config, error) {
 		APUpstreamBaseURL:     env("AP_UPSTREAM_BASE_URL", ""),
 		ChatWSUpstreamURL:     env("CHAT_WS_UPSTREAM_URL", ""),
 		APUpstreamAccessToken: env("AP_UPSTREAM_ACCESS_TOKEN", ""),
+		TunnelHubBaseDomain:   env("TUNNEL_HUB_BASE_DOMAIN", "zenmind.cc"),
+		TunnelHubRelayURL:     env("TUNNEL_HUB_RELAY_URL", ""),
 		AdminUsername:         env("AUTH_ADMIN_USERNAME", builtInDefaults.AdminUsername),
 		AdminPasswordBcrypt:   normalizeQuotedValue(env("AUTH_ADMIN_PASSWORD_BCRYPT", "")),
 		AppUsername:           env("AUTH_APP_USERNAME", builtInDefaults.AppUsername),

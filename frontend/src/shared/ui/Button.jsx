@@ -2,6 +2,7 @@ export function Button({
   children,
   variant = 'primary',
   loading = false,
+  loadingLabel = null,
   className = '',
   type = 'button',
   ...props
@@ -10,7 +11,7 @@ export function Button({
 
   return (
     <button type={type} className={classes} disabled={loading || props.disabled} {...props}>
-      {loading ? 'Processing...' : children}
+      {loading ? (loadingLabel || children) : children}
     </button>
   );
 }

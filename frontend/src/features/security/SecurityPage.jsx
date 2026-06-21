@@ -10,11 +10,6 @@ import { toast } from '../../shared/ui/toast';
 
 const ACCESS_TTL_MAX_SECONDS = 30 * 24 * 60 * 60;
 const createDefaultAccessTtl = () => ({ days: '0', hours: '0', minutes: '10', seconds: '0' });
-const createInitialIssueForm = () => ({
-  masterPassword: 'password',
-  deviceName: 'Admin Console Device',
-  accessTtl: createDefaultAccessTtl()
-});
 const createInitialRefreshForm = () => ({
   deviceToken: '',
   accessTtl: createDefaultAccessTtl()
@@ -53,10 +48,8 @@ export function SecurityPage() {
 
   const [jwks, setJwks] = useState(null);
   const [generatedPublicKey, setGeneratedPublicKey] = useState('');
-  const [issueForm, setIssueForm] = useState(createInitialIssueForm);
   const [refreshForm, setRefreshForm] = useState(createInitialRefreshForm);
 
-  const [issueResult, setIssueResult] = useState(null);
   const [refreshResult, setRefreshResult] = useState(null);
   const [newDeviceAccess, setNewDeviceAccess] = useState(false);
   const [updatingNewDeviceAccess, setUpdatingNewDeviceAccess] = useState(false);
@@ -101,34 +94,6 @@ export function SecurityPage() {
   useEffect(() => {
     loadAll();
   }, []);
-
-  const issueAppToken = async (event) => {
-    event.preventDefault();
-    setError('');
-    setSuccess('');
-
-    try {
-      const payload = {
-        masterPassword: issueForm.masterPassword,
-        deviceName: issueForm.deviceName,
-        accessTtlSeconds: accessTtlToSeconds(issueForm.accessTtl)
-      };
-      const result = await request('/security/app-tokens/issue', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-      setIssueResult(result);
-      setRefreshForm((prev) => ({ ...prev, deviceToken: result.deviceToken || prev.deviceToken }));
-      setSuccess('Issued app access token successfully');
-      toast.success('Issued app access token successfully');
-    } catch (err) {
-      const message = getErrorMessage(err, 'Failed to issue app token');
-      if (!isHandledUnauthorizedError(err)) {
-        setError(message);
-        toast.error(message);
-      }
-    }
-  };
 
   const refreshAppToken = async (event) => {
     event.preventDefault();
@@ -245,114 +210,6 @@ export function SecurityPage() {
           ) : null}
         </div>
         {generatedPublicKey ? <pre className="pem-block spacing-top">{generatedPublicKey}</pre> : null}
-      </PageCard>
-
-      <PageCard title="Issue App Access Token">
-        <form onSubmit={issueAppToken}>
-          <div className="row row-2">
-            <div>
-              <label>Master Password</label>
-              <input
-                type="password"
-                value={issueForm.masterPassword}
-                onChange={(event) => setIssueForm((prev) => ({ ...prev, masterPassword: event.target.value }))}
-                required
-              />
-            </div>
-            <div>
-              <label>Device Name</label>
-              <input
-                value={issueForm.deviceName}
-                onChange={(event) => setIssueForm((prev) => ({ ...prev, deviceName: event.target.value }))}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="row row-5">
-            <div>
-              <label>Days</label>
-              <input
-                type="number"
-                min="0"
-                value={issueForm.accessTtl.days}
-                onChange={(event) => setIssueForm((prev) => ({
-                  ...prev,
-                  accessTtl: { ...prev.accessTtl, days: event.target.value }
-                }))}
-              />
-            </div>
-            <div>
-              <label>Hours</label>
-              <input
-                type="number"
-                min="0"
-                value={issueForm.accessTtl.hours}
-                onChange={(event) => setIssueForm((prev) => ({
-                  ...prev,
-                  accessTtl: { ...prev.accessTtl, hours: event.target.value }
-                }))}
-              />
-            </div>
-            <div>
-              <label>Minutes</label>
-              <input
-                type="number"
-                min="0"
-                value={issueForm.accessTtl.minutes}
-                onChange={(event) => setIssueForm((prev) => ({
-                  ...prev,
-                  accessTtl: { ...prev.accessTtl, minutes: event.target.value }
-                }))}
-              />
-            </div>
-            <div>
-              <label>Seconds</label>
-              <input
-                type="number"
-                min="0"
-                value={issueForm.accessTtl.seconds}
-                onChange={(event) => setIssueForm((prev) => ({
-                  ...prev,
-                  accessTtl: { ...prev.accessTtl, seconds: event.target.value }
-                }))}
-              />
-            </div>
-            <div className="form-action-cell">
-              <label className="label-spacer" aria-hidden="true">Action</label>
-              <Button type="submit">Issue Token</Button>
-            </div>
-          </div>
-          <small className="muted">Custom TTL supports days/hours/minutes/seconds. Max 30 days.</small>
-        </form>
-
-        {issueResult ? (
-          <div className="card inner-card">
-            <h4>Issue Result</h4>
-            <table className="table compact">
-              <tbody>
-                <tr><th>Username</th><td>{issueResult.username}</td></tr>
-                <tr><th>Device ID</th><td>{issueResult.deviceId}</td></tr>
-                <tr><th>Device Name</th><td>{issueResult.deviceName}</td></tr>
-                <tr><th>Expire At</th><td>{formatTime(issueResult.accessTokenExpireAt)}</td></tr>
-                <tr>
-                  <th>Access Token</th>
-                  <td>
-                    <div className="token-cell">{issueResult.accessToken}</div>
-                    <Button variant="secondary" onClick={() => copyText(issueResult.accessToken)}>Copy Access Token</Button>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Device Token</th>
-                  <td>
-                    <div className="token-cell">{issueResult.deviceToken}</div>
-                    <Button variant="secondary" onClick={() => copyText(issueResult.deviceToken)}>Copy Device Token</Button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        ) : null}
       </PageCard>
 
       <PageCard title="Refresh App Access Token">

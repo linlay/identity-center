@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { request } from '../../shared/api/apiClient';
 import { useAsyncAction } from '../../shared/hooks/useAsyncAction';
+import { useI18n } from '../../shared/i18n/I18nProvider';
 import { Button } from '../../shared/ui/Button';
 import { PageCard } from '../../shared/ui/PageCard';
 import { toast } from '../../shared/ui/toast';
@@ -9,6 +10,7 @@ import { defaultProtectedPath } from '../../app/routes';
 
 export function LoginPage({ onLogin }) {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const { loading, error, setError, run } = useAsyncAction();
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('password');
@@ -27,18 +29,18 @@ export function LoginPage({ onLogin }) {
 
       onLogin(session);
       navigate(defaultProtectedPath);
-      toast.success('Signed in successfully');
+      toast.success(t('login.success'));
     } catch {
-      toast.error('Sign in failed');
+      toast.error(t('login.failed'));
     }
   };
 
   return (
     <div className="auth-center">
-      <PageCard title="Admin Login" className="login-card">
+      <PageCard title={t('login.title')} className="login-card">
         {error ? <div className="error">{error}</div> : null}
         <form onSubmit={submit}>
-          <label>Username</label>
+          <label>{t('login.username')}</label>
           <input
             value={username}
             onChange={(event) => {
@@ -48,7 +50,7 @@ export function LoginPage({ onLogin }) {
             required
           />
 
-          <label>Password</label>
+          <label>{t('login.password')}</label>
           <input
             type="password"
             value={password}
@@ -59,7 +61,7 @@ export function LoginPage({ onLogin }) {
             required
           />
 
-          <Button type="submit" loading={loading}>Sign In</Button>
+          <Button type="submit" loading={loading}>{t('login.submit')}</Button>
         </form>
       </PageCard>
     </div>
