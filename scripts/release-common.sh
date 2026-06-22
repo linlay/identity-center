@@ -171,8 +171,7 @@ build_frontend_dist() {
   (
     cd "$REPO_ROOT/frontend"
     npm_config_registry="$NPM_REGISTRY" npm install
-    # Git Bash/MSYS converts /admin/ into C:/Program Files/Git/admin/ for native npm unless disabled.
-    MSYS_NO_PATHCONV=1 MSYS2_ENV_CONV_EXCL="${MSYS2_ENV_CONV_EXCL:+$MSYS2_ENV_CONV_EXCL;}VITE_BASE_PATH" npm_config_registry="$NPM_REGISTRY" VITE_BASE_PATH="$VITE_BASE_PATH" npm run build
+    npm_config_registry="$NPM_REGISTRY" VITE_BASE_PATH="$VITE_BASE_PATH" npm run build
   )
   cp -R "$REPO_ROOT/frontend/dist/." "$output_dir/"
 }
@@ -383,107 +382,7 @@ write_program_manifest() {
         "value": "{{serviceDefaultPort}}",
         "onlyIfDefault": true
       }
-    ],
-    "capabilities": {
-      "provides": [
-        {
-          "id": "auth.publicKey",
-          "darwinCommand": [
-            "scripts/setup-public-key.sh",
-            "--mode",
-            "bootstrap",
-            "--db",
-            "{{auth.dbPath}}",
-            "--out",
-            "{{provider.dataDir}}/keys",
-            "--public-out",
-            "{{output.path}}"
-          ],
-          "linuxCommand": [
-            "scripts/setup-public-key.sh",
-            "--mode",
-            "bootstrap",
-            "--db",
-            "{{auth.dbPath}}",
-            "--out",
-            "{{provider.dataDir}}/keys",
-            "--public-out",
-            "{{output.path}}"
-          ],
-          "windowsCommand": [
-            "scripts/setup-public-key.ps1",
-            "-Mode",
-            "bootstrap",
-            "-Db",
-            "{{auth.dbPath}}",
-            "-Out",
-            "{{provider.dataDir}}/keys",
-            "-PublicOut",
-            "{{output.path}}"
-          ],
-          "env": {
-            "AUTH_DB_PATH": "{{auth.dbPath}}"
-          },
-          "output": "file",
-          "outputPath": "{{provider.dataDir}}/keys/publicKey.pem",
-          "retryOnSqliteBusy": true
-        },
-        {
-          "id": "auth.accessToken",
-          "darwinCommand": [
-            "scripts/issue-bridge-access-token.sh",
-            "--db",
-            "{{auth.dbPath}}",
-            "--issuer",
-            "{{auth.issuer}}",
-            "--username",
-            "{{auth.username}}",
-            "--device-name",
-            "{{desktop.deviceName}}",
-            "--device-id",
-            "{{desktop.deviceId}}"
-          ],
-          "linuxCommand": [
-            "scripts/issue-bridge-access-token.sh",
-            "--db",
-            "{{auth.dbPath}}",
-            "--issuer",
-            "{{auth.issuer}}",
-            "--username",
-            "{{auth.username}}",
-            "--device-name",
-            "{{desktop.deviceName}}",
-            "--device-id",
-            "{{desktop.deviceId}}"
-          ],
-          "windowsCommand": [
-            "scripts/issue-bridge-access-token.ps1",
-            "-Db",
-            "{{auth.dbPath}}",
-            "-Issuer",
-            "{{auth.issuer}}",
-            "-Username",
-            "{{auth.username}}",
-            "-DeviceName",
-            "{{desktop.deviceName}}",
-            "-DeviceId",
-            "{{desktop.deviceId}}"
-          ],
-          "env": {
-            "AUTH_DB_PATH": "{{auth.dbPath}}",
-            "AUTH_ISSUER": "{{auth.issuer}}",
-            "AUTH_APP_USERNAME": "{{auth.username}}",
-            "DESKTOP_DEVICE_ID": "{{desktop.deviceId}}"
-          },
-          "output": "stdoutLastLine",
-          "dependsOn": ["auth.publicKey"],
-          "retryOnSqliteBusy": true,
-          "validateJwtDeviceId": true,
-          "allowDeviceIdFallback": true
-        }
-      ],
-      "requires": []
-    }
+    ]
   }
 }
 EOF

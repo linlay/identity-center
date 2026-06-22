@@ -56,10 +56,6 @@ type Server struct {
 	templates *template.Template
 	logger    *log.Logger
 
-	apAPIProxyOnce sync.Once
-	apAPIProxy     http.Handler
-	apAPIProxyErr  error
-
 	adminSessionsMu sync.RWMutex
 	adminSessions   map[string]model.AdminSession
 
@@ -154,9 +150,6 @@ func (s *Server) routes() http.Handler {
 	s.mountOpenIDRoutes(r, legacyOpenIDBasePath)
 	s.mountOAuth2Routes(r, canonicalOAuth2BasePath)
 	s.mountOAuth2Routes(r, legacyOAuth2BasePath)
-
-	r.Get("/ap/ws", s.handleChatWebSocketProxy)
-	r.Handle("/ap/api/*", http.HandlerFunc(s.handleAPAPIProxy))
 
 	r.Route(adminAPIBasePath, func(ar chi.Router) {
 		ar.Post("/session/login", s.handleAdminLogin)
