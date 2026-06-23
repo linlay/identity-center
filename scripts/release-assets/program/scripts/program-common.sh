@@ -6,16 +6,66 @@ BUNDLE_ROOT="$(cd "$PROGRAM_COMMON_DIR/.." && pwd)"
 APP_NAME="identity-center"
 MANIFEST_FILE="$BUNDLE_ROOT/manifest.json"
 ENV_EXAMPLE_FILE="$BUNDLE_ROOT/.env.example"
-ENV_FILE="${SERVICE_CONFIG_DIR:-$BUNDLE_ROOT}/.env"
 BACKEND_BIN="$BUNDLE_ROOT/backend/$APP_NAME"
 FRONTEND_DIR="$BUNDLE_ROOT/frontend"
 DIST_DIR="$FRONTEND_DIR/dist"
-DATA_DIR="${SERVICE_DATA_DIR:-$BUNDLE_ROOT/data}"
-RUN_DIR="${SERVICE_STATE_DIR:-$BUNDLE_ROOT/run}"
-LOG_DIR="${SERVICE_LOG_DIR:-$RUN_DIR}"
-PID_FILE="$RUN_DIR/$APP_NAME.pid"
-LOG_FILE="$LOG_DIR/$APP_NAME.log"
-ERROR_LOG_FILE="$LOG_DIR/$APP_NAME.stderr.log"
+CONFIG_DIR="$BUNDLE_ROOT"
+DATA_DIR="$BUNDLE_ROOT/data"
+RUN_DIR="$BUNDLE_ROOT/run"
+LOG_DIR="$RUN_DIR"
+PROGRAM_PORT=""
+ENV_FILE=""
+PID_FILE=""
+LOG_FILE=""
+ERROR_LOG_FILE=""
+
+program_refresh_layout_paths() {
+  ENV_FILE="$CONFIG_DIR/.env"
+  PID_FILE="$RUN_DIR/$APP_NAME.pid"
+  LOG_FILE="$LOG_DIR/$APP_NAME.log"
+  ERROR_LOG_FILE="$LOG_DIR/$APP_NAME.stderr.log"
+}
+
+program_apply_layout_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --config-dir)
+        [[ $# -ge 2 ]] || program_die "missing value for --config-dir"
+        CONFIG_DIR="$2"
+        shift 2
+        ;;
+      --data-dir)
+        [[ $# -ge 2 ]] || program_die "missing value for --data-dir"
+        DATA_DIR="$2"
+        shift 2
+        ;;
+      --state-dir)
+        [[ $# -ge 2 ]] || program_die "missing value for --state-dir"
+        RUN_DIR="$2"
+        if [[ "$LOG_DIR" == "$BUNDLE_ROOT/run" ]]; then
+          LOG_DIR="$RUN_DIR"
+        fi
+        shift 2
+        ;;
+      --log-dir)
+        [[ $# -ge 2 ]] || program_die "missing value for --log-dir"
+        LOG_DIR="$2"
+        shift 2
+        ;;
+      --port)
+        [[ $# -ge 2 ]] || program_die "missing value for --port"
+        PROGRAM_PORT="$2"
+        shift 2
+        ;;
+      *)
+        program_die "unsupported argument: $1"
+        ;;
+    esac
+  done
+  program_refresh_layout_paths
+}
+
+program_refresh_layout_paths
 
 program_die() {
   echo "[program] $*" >&2
@@ -64,6 +114,9 @@ program_load_env() {
   . "$ENV_FILE"
   set +a
   SERVER_PORT="${SERVER_PORT:-18080}"
+  if [[ -n "$PROGRAM_PORT" ]]; then
+    SERVER_PORT="$PROGRAM_PORT"
+  fi
   AUTH_DB_PATH="${AUTH_DB_PATH:-$DATA_DIR/auth.db}"
   FRONTEND_DIST_DIR="${FRONTEND_DIST_DIR:-./frontend/dist}"
   program_resolve_frontend_dist_dir
@@ -76,6 +129,9 @@ program_load_env_optional() {
     return
   fi
   SERVER_PORT="${SERVER_PORT:-18080}"
+  if [[ -n "$PROGRAM_PORT" ]]; then
+    SERVER_PORT="$PROGRAM_PORT"
+  fi
   AUTH_DB_PATH="${AUTH_DB_PATH:-$DATA_DIR/auth.db}"
   FRONTEND_DIST_DIR="${FRONTEND_DIST_DIR:-./frontend/dist}"
   program_resolve_frontend_dist_dir
@@ -116,11 +172,17 @@ program_clear_stale_pid() {
 
 program_start_backend_daemon() {
   local pid
+  local backend_args=(--config-dir "$CONFIG_DIR" --data-dir "$DATA_DIR" --state-dir "$RUN_DIR" --log-dir "$LOG_DIR")
+  if [[ -n "$PROGRAM_PORT" ]]; then
+    backend_args+=(--port "$PROGRAM_PORT")
+  elif [[ -n "${SERVER_PORT:-}" ]]; then
+    backend_args+=(--port "$SERVER_PORT")
+  fi
 
   program_clear_stale_pid
   : >"$LOG_FILE"
   : >"$ERROR_LOG_FILE"
-  nohup "$BACKEND_BIN" >"$LOG_FILE" 2>"$ERROR_LOG_FILE" &
+  nohup "$BACKEND_BIN" "${backend_args[@]}" >"$LOG_FILE" 2>"$ERROR_LOG_FILE" &
   pid=$!
   printf '%s\n' "$pid" >"$PID_FILE"
   sleep 1
@@ -135,7 +197,13 @@ program_start_backend_daemon() {
 }
 
 program_exec_backend() {
-  exec "$BACKEND_BIN"
+  local backend_args=(--config-dir "$CONFIG_DIR" --data-dir "$DATA_DIR" --state-dir "$RUN_DIR" --log-dir "$LOG_DIR")
+  if [[ -n "$PROGRAM_PORT" ]]; then
+    backend_args+=(--port "$PROGRAM_PORT")
+  elif [[ -n "${SERVER_PORT:-}" ]]; then
+    backend_args+=(--port "$SERVER_PORT")
+  fi
+  exec "$BACKEND_BIN" "${backend_args[@]}"
 }
 
 program_stop_backend() {

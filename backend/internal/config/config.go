@@ -30,13 +30,6 @@ type defaults struct {
 	CleanupCron          string
 }
 
-func defaultDBPath() string {
-	if serviceDataDir := strings.TrimSpace(os.Getenv("SERVICE_DATA_DIR")); serviceDataDir != "" {
-		return filepath.Join(serviceDataDir, "auth.db")
-	}
-	return "../data/auth.db"
-}
-
 var builtInDefaults = defaults{
 	ServerPort:           8080,
 	DBPath:               "../data/auth.db",
@@ -54,6 +47,10 @@ var builtInDefaults = defaults{
 }
 
 type Config struct {
+	ConfigDir       string
+	DataDir         string
+	StateDir        string
+	LogDir          string
 	ServerPort      int
 	DBPath          string
 	Issuer          string
@@ -77,12 +74,52 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load("../.env", ".env")
+	return LoadWithArgs(os.Args[1:])
+}
+
+type cliOptions struct {
+	configDir string
+	dataDir   string
+	stateDir  string
+	logDir    string
+	port      string
+}
+
+func LoadWithArgs(args []string) (*Config, error) {
+	options, err := parseCLIOptions(args)
+	if err != nil {
+		return nil, err
+	}
+
+	if options.configDir != "" {
+		_ = godotenv.Load(filepath.Join(options.configDir, ".env"))
+	} else {
+		_ = godotenv.Load("../.env", ".env")
+	}
 
 	port := envInt("SERVER_PORT", builtInDefaults.ServerPort)
+	if options.port != "" {
+		parsedPort, err := strconv.Atoi(options.port)
+		if err != nil {
+			return nil, fmt.Errorf("invalid --port: %w", err)
+		}
+		port = parsedPort
+	}
+	dbPathDefault := builtInDefaults.DBPath
+	if options.dataDir != "" {
+		dbPathDefault = filepath.Join(options.dataDir, "auth.db")
+	}
+	dbPath := env("AUTH_DB_PATH", dbPathDefault)
+	if options.dataDir != "" {
+		dbPath = dbPathDefault
+	}
 	cfg := &Config{
+		ConfigDir:           options.configDir,
+		DataDir:             options.dataDir,
+		StateDir:            options.stateDir,
+		LogDir:              options.logDir,
 		ServerPort:          port,
-		DBPath:              env("AUTH_DB_PATH", defaultDBPath()),
+		DBPath:              dbPath,
 		Issuer:              env("AUTH_ISSUER", builtInDefaults.Issuer),
 		FrontendDistDir:     env("FRONTEND_DIST_DIR", ""),
 		AdminUsername:       env("AUTH_ADMIN_USERNAME", builtInDefaults.AdminUsername),
@@ -96,7 +133,6 @@ func Load() (*Config, error) {
 		CleanupCron:          env("AUTH_CLEANUP_CRON", builtInDefaults.CleanupCron),
 	}
 
-	var err error
 	cfg.AppAccessTTL, err = parseFlexibleDuration(env("AUTH_APP_ACCESS_TTL", builtInDefaults.AppAccessTTL))
 	if err != nil {
 		return nil, fmt.Errorf("invalid AUTH_APP_ACCESS_TTL: %w", err)
@@ -134,6 +170,9 @@ func Load() (*Config, error) {
 }
 
 func validate(cfg *Config) error {
+	if cfg.ServerPort <= 0 || cfg.ServerPort > 65535 {
+		return fmt.Errorf("SERVER_PORT must be a valid TCP port")
+	}
 	if !bcryptPattern.MatchString(cfg.AdminPasswordBcrypt) {
 		return fmt.Errorf("AUTH_ADMIN_PASSWORD_BCRYPT must be a valid bcrypt hash")
 	}
@@ -150,6 +189,52 @@ func validate(cfg *Config) error {
 		return fmt.Errorf("token TTL must be positive")
 	}
 	return nil
+}
+
+func parseCLIOptions(args []string) (cliOptions, error) {
+	var options cliOptions
+	for index := 0; index < len(args); index++ {
+		arg := strings.TrimSpace(args[index])
+		if arg == "" {
+			continue
+		}
+		name, value, hasInlineValue := strings.Cut(arg, "=")
+		assign := func(target *string) error {
+			if hasInlineValue {
+				*target = strings.TrimSpace(value)
+				return nil
+			}
+			if index+1 >= len(args) {
+				return fmt.Errorf("missing value for %s", name)
+			}
+			index++
+			*target = strings.TrimSpace(args[index])
+			return nil
+		}
+		switch name {
+		case "--config-dir":
+			if err := assign(&options.configDir); err != nil {
+				return cliOptions{}, err
+			}
+		case "--data-dir":
+			if err := assign(&options.dataDir); err != nil {
+				return cliOptions{}, err
+			}
+		case "--state-dir":
+			if err := assign(&options.stateDir); err != nil {
+				return cliOptions{}, err
+			}
+		case "--log-dir":
+			if err := assign(&options.logDir); err != nil {
+				return cliOptions{}, err
+			}
+		case "--port":
+			if err := assign(&options.port); err != nil {
+				return cliOptions{}, err
+			}
+		}
+	}
+	return options, nil
 }
 
 func env(k, fallback string) string {

@@ -5,16 +5,75 @@ $Script:BundleRoot = Split-Path -Parent $Script:ProgramCommonDir
 $Script:AppName = 'identity-center'
 $Script:ManifestFile = Join-Path $Script:BundleRoot 'manifest.json'
 $Script:EnvExampleFile = Join-Path $Script:BundleRoot '.env.example'
-$Script:EnvFile = Join-Path $(if ($env:SERVICE_CONFIG_DIR) { $env:SERVICE_CONFIG_DIR } else { $Script:BundleRoot }) '.env'
 $Script:BackendBin = Join-Path (Join-Path $Script:BundleRoot 'backend') 'identity-center.exe'
 $Script:FrontendDir = Join-Path $Script:BundleRoot 'frontend'
 $Script:DistDir = Join-Path $Script:FrontendDir 'dist'
-$Script:DataDir = if ($env:SERVICE_DATA_DIR) { $env:SERVICE_DATA_DIR } else { Join-Path $Script:BundleRoot 'data' }
-$Script:RunDir = if ($env:SERVICE_STATE_DIR) { $env:SERVICE_STATE_DIR } else { Join-Path $Script:BundleRoot 'run' }
-$Script:LogDir = if ($env:SERVICE_LOG_DIR) { $env:SERVICE_LOG_DIR } else { $Script:RunDir }
-$Script:PidFile = Join-Path $Script:RunDir 'identity-center.pid'
-$Script:LogFile = Join-Path $Script:LogDir 'identity-center.log'
-$Script:ErrorLogFile = Join-Path $Script:LogDir 'identity-center.stderr.log'
+$Script:ConfigDir = $Script:BundleRoot
+$Script:DataDir = Join-Path $Script:BundleRoot 'data'
+$Script:RunDir = Join-Path $Script:BundleRoot 'run'
+$Script:LogDir = $Script:RunDir
+$Script:ProgramPort = ''
+$Script:EnvFile = ''
+$Script:PidFile = ''
+$Script:LogFile = ''
+$Script:ErrorLogFile = ''
+
+function Update-ProgramLayoutPaths {
+  $Script:EnvFile = Join-Path $Script:ConfigDir '.env'
+  $Script:PidFile = Join-Path $Script:RunDir 'identity-center.pid'
+  $Script:LogFile = Join-Path $Script:LogDir 'identity-center.log'
+  $Script:ErrorLogFile = Join-Path $Script:LogDir 'identity-center.stderr.log'
+}
+
+function Set-ProgramLayoutArgs {
+  param([string[]]$Arguments)
+
+  for ($i = 0; $i -lt $Arguments.Count; $i++) {
+    $arg = $Arguments[$i]
+    switch ($arg) {
+      '--config-dir' {
+        if ($i + 1 -ge $Arguments.Count) { Fail-Program 'missing value for --config-dir' }
+        $i++
+        $Script:ConfigDir = $Arguments[$i]
+        continue
+      }
+      '--data-dir' {
+        if ($i + 1 -ge $Arguments.Count) { Fail-Program 'missing value for --data-dir' }
+        $i++
+        $Script:DataDir = $Arguments[$i]
+        continue
+      }
+      '--state-dir' {
+        if ($i + 1 -ge $Arguments.Count) { Fail-Program 'missing value for --state-dir' }
+        $previousDefaultLogDir = Join-Path $Script:BundleRoot 'run'
+        $i++
+        $Script:RunDir = $Arguments[$i]
+        if ($Script:LogDir -eq $previousDefaultLogDir) {
+          $Script:LogDir = $Script:RunDir
+        }
+        continue
+      }
+      '--log-dir' {
+        if ($i + 1 -ge $Arguments.Count) { Fail-Program 'missing value for --log-dir' }
+        $i++
+        $Script:LogDir = $Arguments[$i]
+        continue
+      }
+      '--port' {
+        if ($i + 1 -ge $Arguments.Count) { Fail-Program 'missing value for --port' }
+        $i++
+        $Script:ProgramPort = $Arguments[$i]
+        continue
+      }
+      default {
+        Fail-Program "unsupported argument: $arg"
+      }
+    }
+  }
+  Update-ProgramLayoutPaths
+}
+
+Update-ProgramLayoutPaths
 
 function Resolve-ProgramFrontendDistDir {
   $frontendDistDir = if ($env:FRONTEND_DIST_DIR) { $env:FRONTEND_DIST_DIR } else { '.\frontend\dist' }
@@ -69,6 +128,9 @@ function Import-ProgramEnv {
       if (-not $env:SERVER_PORT) {
         $env:SERVER_PORT = '18080'
       }
+      if ($Script:ProgramPort) {
+        $env:SERVER_PORT = $Script:ProgramPort
+      }
       if (-not $env:AUTH_DB_PATH) {
         $env:AUTH_DB_PATH = Join-Path $Script:DataDir 'auth.db'
       }
@@ -100,6 +162,9 @@ function Import-ProgramEnv {
 
   if (-not $env:SERVER_PORT) {
     $env:SERVER_PORT = '18080'
+  }
+  if ($Script:ProgramPort) {
+    $env:SERVER_PORT = $Script:ProgramPort
   }
   if (-not $env:AUTH_DB_PATH) {
     $env:AUTH_DB_PATH = Join-Path $Script:DataDir 'auth.db'
@@ -138,6 +203,13 @@ function Start-ProgramBackend {
     [switch]$Daemon
   )
 
+  $backendArgs = @('--config-dir', $Script:ConfigDir, '--data-dir', $Script:DataDir, '--state-dir', $Script:RunDir, '--log-dir', $Script:LogDir)
+  if ($Script:ProgramPort) {
+    $backendArgs += @('--port', $Script:ProgramPort)
+  } elseif ($env:SERVER_PORT) {
+    $backendArgs += @('--port', $env:SERVER_PORT)
+  }
+
   if ($Daemon) {
     Clear-StaleProgramPid
     if (Test-Path -LiteralPath $Script:LogFile) {
@@ -151,7 +223,7 @@ function Start-ProgramBackend {
       New-Item -ItemType File -Path $Script:ErrorLogFile -Force | Out-Null
     }
 
-    $proc = Start-Process -FilePath $Script:BackendBin -WorkingDirectory $Script:BundleRoot -WindowStyle Hidden -RedirectStandardOutput $Script:LogFile -RedirectStandardError $Script:ErrorLogFile -PassThru
+    $proc = Start-Process -FilePath $Script:BackendBin -ArgumentList $backendArgs -WorkingDirectory $Script:BundleRoot -WindowStyle Hidden -RedirectStandardOutput $Script:LogFile -RedirectStandardError $Script:ErrorLogFile -PassThru
     $proc.Id | Set-Content -LiteralPath $Script:PidFile
     Start-Sleep -Seconds 1
     if ($proc.HasExited) {
@@ -164,7 +236,7 @@ function Start-ProgramBackend {
     return
   }
 
-  & $Script:BackendBin
+  & $Script:BackendBin @backendArgs
 }
 
 function Stop-ProgramBackend {

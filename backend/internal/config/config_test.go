@@ -122,6 +122,44 @@ func TestLoadEnvOverridesBuiltInDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadCLIServiceLayoutOverridesPathAndPortEnv(t *testing.T) {
+	tempDir := t.TempDir()
+	chdirTemp(t, tempDir)
+	configDir := t.TempDir()
+	dataDir := t.TempDir()
+	stateDir := t.TempDir()
+	logDir := t.TempDir()
+	t.Setenv("SERVER_PORT", "28080")
+	t.Setenv("AUTH_DB_PATH", "/tmp/ignored-auth.db")
+	t.Setenv("AUTH_ISSUER", "http://env.example:28080")
+	t.Setenv("AUTH_ADMIN_PASSWORD_BCRYPT", documentedDevBcrypt)
+	t.Setenv("AUTH_APP_MASTER_PASSWORD_BCRYPT", documentedDevBcrypt)
+
+	cfg, err := LoadWithArgs([]string{
+		"--config-dir", configDir,
+		"--data-dir", dataDir,
+		"--state-dir", stateDir,
+		"--log-dir", logDir,
+		"--port", "19090",
+	})
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if cfg.ConfigDir != configDir || cfg.DataDir != dataDir || cfg.StateDir != stateDir || cfg.LogDir != logDir {
+		t.Fatalf("layout flags not captured: config=%s data=%s state=%s log=%s", cfg.ConfigDir, cfg.DataDir, cfg.StateDir, cfg.LogDir)
+	}
+	if cfg.ServerPort != 19090 {
+		t.Fatalf("ServerPort = %d, want CLI port", cfg.ServerPort)
+	}
+	if want := dataDir + string(os.PathSeparator) + "auth.db"; cfg.DBPath != want {
+		t.Fatalf("DBPath = %q, want %q", cfg.DBPath, want)
+	}
+	if cfg.Issuer != "http://env.example:28080" {
+		t.Fatalf("Issuer = %q, want env issuer", cfg.Issuer)
+	}
+}
+
 func TestLoadIgnoresBackendPortForServerPort(t *testing.T) {
 	tempDir := t.TempDir()
 	chdirTemp(t, tempDir)
