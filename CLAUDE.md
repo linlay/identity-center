@@ -61,7 +61,7 @@ Program Bundle 当前只交付 backend 二进制与 `frontend/dist`。宿主机�
 - `.env.example` 只维护部署必要字段
 - backend 宿主机端口映射已从部署契约移除
 - `BACKEND_PORT` 不再是有效部署变量；backend 容器内固定监听 `8080`
-- `AUTH_ISSUER`、两个 bcrypt 仍是关键输入；前端入口固定为 `/admin/`
+- `AUTH_ISSUER`、admin bcrypt 仍是关键输入；前端入口固定为 `/admin/`
 - 当前仓库仍兼容旧代码里的可编辑配置文件能力，但它不再是默认部署模型
 
 ## 8. 开发流程

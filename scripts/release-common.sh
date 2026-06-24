@@ -160,7 +160,7 @@ archive_bundle_dir() {
 copy_env_example_with_version() {
   local dest="$1"
   cp "$REPO_ROOT/.env.example" "$dest"
-  perl -0pi -e 's/^IDENTITY_CENTER_VERSION=.*/IDENTITY_CENTER_VERSION='"$VERSION"'/m' "$dest"
+  perl -0pi -e 's/\A((?:#[^\n]*\n)+)/${1}# Version tag used by the release bundle compose file.\nIDENTITY_CENTER_VERSION='"$VERSION"'\n/' "$dest"
   grep -q "^IDENTITY_CENTER_VERSION=$VERSION$" "$dest" || die "failed to set IDENTITY_CENTER_VERSION in $dest"
 }
 

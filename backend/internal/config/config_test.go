@@ -44,7 +44,6 @@ func TestLoadUsesBuiltInDefaults(t *testing.T) {
 	t.Setenv("AUTH_CLEANUP_RETENTION", "")
 	t.Setenv("AUTH_CLEANUP_CRON", "")
 	t.Setenv("AUTH_ADMIN_PASSWORD_BCRYPT", documentedDevBcrypt)
-	t.Setenv("AUTH_APP_MASTER_PASSWORD_BCRYPT", documentedDevBcrypt)
 
 	cfg, err := Load()
 	if err != nil {
@@ -95,7 +94,6 @@ func TestLoadEnvOverridesBuiltInDefaults(t *testing.T) {
 	t.Setenv("AUTH_CLEANUP_RETENTION", "PT6H")
 	t.Setenv("AUTH_CLEANUP_CRON", "0 */10 * * * *")
 	t.Setenv("AUTH_ADMIN_PASSWORD_BCRYPT", documentedDevBcrypt)
-	t.Setenv("AUTH_APP_MASTER_PASSWORD_BCRYPT", documentedDevBcrypt)
 
 	cfg, err := Load()
 	if err != nil {
@@ -133,7 +131,6 @@ func TestLoadCLIServiceLayoutOverridesPathAndPortEnv(t *testing.T) {
 	t.Setenv("AUTH_DB_PATH", "/tmp/ignored-auth.db")
 	t.Setenv("AUTH_ISSUER", "http://env.example:28080")
 	t.Setenv("AUTH_ADMIN_PASSWORD_BCRYPT", documentedDevBcrypt)
-	t.Setenv("AUTH_APP_MASTER_PASSWORD_BCRYPT", documentedDevBcrypt)
 
 	cfg, err := LoadWithArgs([]string{
 		"--config-dir", configDir,
@@ -166,7 +163,6 @@ func TestLoadIgnoresBackendPortForServerPort(t *testing.T) {
 	t.Setenv("SERVER_PORT", "")
 	t.Setenv("BACKEND_PORT", "11952")
 	t.Setenv("AUTH_ADMIN_PASSWORD_BCRYPT", documentedDevBcrypt)
-	t.Setenv("AUTH_APP_MASTER_PASSWORD_BCRYPT", documentedDevBcrypt)
 
 	cfg, err := Load()
 	if err != nil {
@@ -186,7 +182,6 @@ func TestDocumentedDevBcryptPassesValidation(t *testing.T) {
 	tempDir := t.TempDir()
 	chdirTemp(t, tempDir)
 	t.Setenv("AUTH_ADMIN_PASSWORD_BCRYPT", documentedDevBcrypt)
-	t.Setenv("AUTH_APP_MASTER_PASSWORD_BCRYPT", documentedDevBcrypt)
 
 	cfg, err := Load()
 	if err != nil {
@@ -194,8 +189,5 @@ func TestDocumentedDevBcryptPassesValidation(t *testing.T) {
 	}
 	if cfg.AdminPasswordBcrypt != documentedDevBcrypt {
 		t.Fatalf("unexpected admin bcrypt: %s", cfg.AdminPasswordBcrypt)
-	}
-	if cfg.AppMasterPasswordBcrypt != documentedDevBcrypt {
-		t.Fatalf("unexpected app master bcrypt: %s", cfg.AppMasterPasswordBcrypt)
 	}
 }

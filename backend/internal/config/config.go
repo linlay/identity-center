@@ -59,11 +59,10 @@ type Config struct {
 	AdminUsername       string
 	AdminPasswordBcrypt string
 
-	AppUsername             string
-	AppMasterPasswordBcrypt string
-	AppAccessTTL            time.Duration
-	AppMaxAccessTTL         time.Duration
-	AppRotateDeviceToken    bool
+	AppUsername          string
+	AppAccessTTL         time.Duration
+	AppMaxAccessTTL      time.Duration
+	AppRotateDeviceToken bool
 
 	TokenAccessTTL     time.Duration
 	TokenRefreshTTL    time.Duration
@@ -114,20 +113,17 @@ func LoadWithArgs(args []string) (*Config, error) {
 		dbPath = dbPathDefault
 	}
 	cfg := &Config{
-		ConfigDir:           options.configDir,
-		DataDir:             options.dataDir,
-		StateDir:            options.stateDir,
-		LogDir:              options.logDir,
-		ServerPort:          port,
-		DBPath:              dbPath,
-		Issuer:              env("AUTH_ISSUER", builtInDefaults.Issuer),
-		FrontendDistDir:     env("FRONTEND_DIST_DIR", ""),
-		AdminUsername:       env("AUTH_ADMIN_USERNAME", builtInDefaults.AdminUsername),
-		AdminPasswordBcrypt: normalizeQuotedValue(env("AUTH_ADMIN_PASSWORD_BCRYPT", "")),
-		AppUsername:         env("AUTH_APP_USERNAME", builtInDefaults.AppUsername),
-		AppMasterPasswordBcrypt: normalizeQuotedValue(
-			env("AUTH_APP_MASTER_PASSWORD_BCRYPT", ""),
-		),
+		ConfigDir:            options.configDir,
+		DataDir:              options.dataDir,
+		StateDir:             options.stateDir,
+		LogDir:               options.logDir,
+		ServerPort:           port,
+		DBPath:               dbPath,
+		Issuer:               env("AUTH_ISSUER", builtInDefaults.Issuer),
+		FrontendDistDir:      env("FRONTEND_DIST_DIR", ""),
+		AdminUsername:        env("AUTH_ADMIN_USERNAME", builtInDefaults.AdminUsername),
+		AdminPasswordBcrypt:  normalizeQuotedValue(env("AUTH_ADMIN_PASSWORD_BCRYPT", "")),
+		AppUsername:          env("AUTH_APP_USERNAME", builtInDefaults.AppUsername),
 		AppRotateDeviceToken: envBool("AUTH_APP_ROTATE_DEVICE_TOKEN", builtInDefaults.AppRotateDeviceToken),
 		TokenRotateRefresh:   envBool("AUTH_TOKEN_ROTATE_REFRESH_TOKEN", builtInDefaults.TokenRotateRefresh),
 		CleanupCron:          env("AUTH_CLEANUP_CRON", builtInDefaults.CleanupCron),
@@ -175,9 +171,6 @@ func validate(cfg *Config) error {
 	}
 	if !bcryptPattern.MatchString(cfg.AdminPasswordBcrypt) {
 		return fmt.Errorf("AUTH_ADMIN_PASSWORD_BCRYPT must be a valid bcrypt hash")
-	}
-	if !bcryptPattern.MatchString(cfg.AppMasterPasswordBcrypt) {
-		return fmt.Errorf("AUTH_APP_MASTER_PASSWORD_BCRYPT must be a valid bcrypt hash")
 	}
 	if cfg.AppMaxAccessTTL <= 0 {
 		return fmt.Errorf("AUTH_APP_MAX_ACCESS_TTL must be positive")

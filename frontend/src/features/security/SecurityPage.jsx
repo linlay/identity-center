@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { getErrorMessage, isHandledUnauthorizedError, request } from '../../shared/api/apiClient';
 import { copyToClipboard } from '../../shared/utils/clipboard';
 import { formatTime } from '../../shared/utils/time';
-import { Badge } from '../../shared/ui/Badge';
 import { Button } from '../../shared/ui/Button';
 import { LoadingOverlay } from '../../shared/ui/LoadingOverlay';
 import { PageCard } from '../../shared/ui/PageCard';
@@ -11,7 +10,6 @@ import { toast } from '../../shared/ui/toast';
 const ACCESS_TTL_MAX_SECONDS = 30 * 24 * 60 * 60;
 const createDefaultAccessTtl = () => ({ days: '0', hours: '0', minutes: '10', seconds: '0' });
 const createInitialIssueForm = () => ({
-  masterPassword: 'password',
   deviceName: 'Admin Console Device',
   accessTtl: createDefaultAccessTtl()
 });
@@ -58,8 +56,6 @@ export function SecurityPage() {
 
   const [issueResult, setIssueResult] = useState(null);
   const [refreshResult, setRefreshResult] = useState(null);
-  const [newDeviceAccess, setNewDeviceAccess] = useState(false);
-  const [updatingNewDeviceAccess, setUpdatingNewDeviceAccess] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const copyText = async (text) => {
@@ -77,16 +73,11 @@ export function SecurityPage() {
     setJwks(data);
   };
 
-  const loadNewDeviceAccess = async () => {
-    const data = await request('/security/new-device-access');
-    setNewDeviceAccess(Boolean(data?.allowNewDeviceLogin));
-  };
-
   const loadAll = async () => {
     setLoading(true);
     setError('');
     try {
-      await Promise.all([loadJwks(), loadNewDeviceAccess()]);
+      await loadJwks();
     } catch (err) {
       const message = getErrorMessage(err, 'Failed to load security data');
       if (!isHandledUnauthorizedError(err)) {
@@ -109,7 +100,6 @@ export function SecurityPage() {
 
     try {
       const payload = {
-        masterPassword: issueForm.masterPassword,
         deviceName: issueForm.deviceName,
         accessTtlSeconds: accessTtlToSeconds(issueForm.accessTtl)
       };
@@ -182,52 +172,12 @@ export function SecurityPage() {
     }
   };
 
-  const setNewDeviceAccessStatus = async (nextValue) => {
-    setError('');
-    setSuccess('');
-    setUpdatingNewDeviceAccess(true);
-
-    try {
-      const result = await request('/security/new-device-access', {
-        method: 'PUT',
-        body: JSON.stringify({ allowNewDeviceLogin: nextValue })
-      });
-      const enabled = Boolean(result?.allowNewDeviceLogin);
-      setNewDeviceAccess(enabled);
-      setSuccess(`New device access ${enabled ? 'enabled' : 'disabled'}`);
-      toast.success(`New device access ${enabled ? 'enabled' : 'disabled'}`);
-    } catch (err) {
-      const message = getErrorMessage(err, 'Failed to update new device access');
-      if (!isHandledUnauthorizedError(err)) {
-        setError(message);
-        toast.error(message);
-      }
-    } finally {
-      setUpdatingNewDeviceAccess(false);
-    }
-  };
-
   return (
     <>
       <PageCard title="Security Overview" actions={<Button variant="ghost" onClick={loadAll}>Refresh All</Button>}>
         <LoadingOverlay show={loading} label="Loading security data..." />
         {error ? <div className="error">{error}</div> : null}
         {success ? <div className="success">{success}</div> : null}
-      </PageCard>
-
-      <PageCard
-        title="New Device Access"
-        actions={<Badge tone={newDeviceAccess ? 'success' : 'danger'}>{newDeviceAccess ? 'OPEN' : 'CLOSED'}</Badge>}
-      >
-        <p className="muted">
-          When closed, new devices cannot use <code>/api/auth/login</code> for first-time onboarding.
-        </p>
-        <Button
-          onClick={() => setNewDeviceAccessStatus(!newDeviceAccess)}
-          loading={updatingNewDeviceAccess}
-        >
-          {newDeviceAccess ? 'Disable New Device Access' : 'Enable New Device Access'}
-        </Button>
       </PageCard>
 
       <PageCard title="JWKs">
@@ -249,16 +199,7 @@ export function SecurityPage() {
 
       <PageCard title="Issue App Access Token">
         <form onSubmit={issueAppToken}>
-          <div className="row row-2">
-            <div>
-              <label>Master Password</label>
-              <input
-                type="password"
-                value={issueForm.masterPassword}
-                onChange={(event) => setIssueForm((prev) => ({ ...prev, masterPassword: event.target.value }))}
-                required
-              />
-            </div>
+          <div className="row">
             <div>
               <label>Device Name</label>
               <input

@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -65,8 +64,6 @@ type Server struct {
 	pairingTicketsMu sync.Mutex
 	pairingTickets   map[string]appPairingTicket
 
-	allowNewDeviceLogin atomic.Bool
-
 	cron *cron.Cron
 }
 
@@ -106,7 +103,6 @@ func New(cfg *config.Config, st *store.Store, keys *security.KeyManager, logger 
 		oauthSessions:  map[string]model.OAuthUserSession{},
 		pairingTickets: map[string]appPairingTicket{},
 	}
-	s.allowNewDeviceLogin.Store(false)
 	s.router = s.routes()
 
 	c := cron.New(cron.WithSeconds())
@@ -177,8 +173,6 @@ func (s *Server) routes() http.Handler {
 			pr.Post("/security/app-tokens/refresh", s.handleAdminRefreshAppToken)
 			pr.Get("/security/app-devices", s.handleAdminListAppDevices)
 			pr.Post("/security/app-devices/{deviceId}/revoke", s.handleAdminRevokeAppDevice)
-			pr.Get("/security/new-device-access", s.handleAdminGetNewDeviceAccess)
-			pr.Put("/security/new-device-access", s.handleAdminSetNewDeviceAccess)
 			pr.Get("/security/jwks", s.handleAdminSecurityJWKS)
 			pr.Post("/security/public-key/generate", s.handleAdminGeneratePublicKey)
 			pr.Post("/security/key-pair/generate", s.handleAdminGenerateKeyPair)
@@ -189,11 +183,9 @@ func (s *Server) routes() http.Handler {
 
 	r.Route("/api", func(api chi.Router) {
 		api.Route("/auth", func(ar chi.Router) {
-			ar.Post("/login", s.handleAppLogin)
 			ar.Post("/refresh", s.handleAppRefresh)
 			ar.Post("/pairing/claim", s.handleAppPairingClaim)
 			ar.Get("/jwks", s.handleAppJWKS)
-			ar.Get("/new-device-access", s.handleAppNewDeviceAccess)
 
 			ar.Group(func(g chi.Router) {
 				g.Use(s.appBearerMiddleware)
@@ -645,19 +637,23 @@ func (s *Server) handleRotateClientSecret(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"clientId": clientID, "newClientSecret": secret})
 }
 
-func (s *Server) handleAppLogin(w http.ResponseWriter, r *http.Request) {
-	result, err := s.loginApp(r, true)
-	if err != nil {
-		writeAPIError(w, err.status, err.message)
+func (s *Server) handleAdminIssueAppToken(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DeviceName       string `json:"deviceName"`
+		AccessTTLSeconds *int   `json:"accessTtlSeconds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
-}
-
-func (s *Server) handleAdminIssueAppToken(w http.ResponseWriter, r *http.Request) {
-	result, err := s.loginApp(r, false)
+	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds)
 	if err != nil {
-		writeAPIError(w, err.status, err.message)
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, appErr := s.createAppLoginSession(req.DeviceName, accessTTL)
+	if appErr != nil {
+		writeAPIError(w, appErr.status, appErr.message)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -675,28 +671,6 @@ type appLoginResult struct {
 type appError struct {
 	status  int
 	message string
-}
-
-func (s *Server) loginApp(r *http.Request, enforceNewDeviceGate bool) (*appLoginResult, *appError) {
-	var req struct {
-		MasterPassword   string `json:"masterPassword"`
-		DeviceName       string `json:"deviceName"`
-		AccessTTLSeconds *int   `json:"accessTtlSeconds"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, &appError{status: http.StatusBadRequest, message: "invalid request body"}
-	}
-	if enforceNewDeviceGate && !s.allowNewDeviceLogin.Load() {
-		return nil, &appError{status: http.StatusForbidden, message: "new device onboarding is disabled"}
-	}
-	if bcrypt.CompareHashAndPassword([]byte(s.cfg.AppMasterPasswordBcrypt), []byte(req.MasterPassword)) != nil {
-		return nil, &appError{status: http.StatusBadRequest, message: "invalid credentials"}
-	}
-	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds)
-	if err != nil {
-		return nil, &appError{status: http.StatusBadRequest, message: err.Error()}
-	}
-	return s.createAppLoginSession(req.DeviceName, accessTTL)
 }
 
 func (s *Server) createAppLoginSession(deviceName string, accessTTL time.Duration) (*appLoginResult, *appError) {
@@ -1032,25 +1006,6 @@ func (s *Server) handleAdminSecurityJWKS(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"jwks": jwks})
-}
-
-func (s *Server) handleAppNewDeviceAccess(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"allowNewDeviceLogin": s.allowNewDeviceLogin.Load()})
-}
-
-func (s *Server) handleAdminGetNewDeviceAccess(w http.ResponseWriter, r *http.Request) {
-	s.handleAppNewDeviceAccess(w, r)
-}
-
-func (s *Server) handleAdminSetNewDeviceAccess(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Allow bool `json:"allowNewDeviceLogin"`
-	}
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	s.allowNewDeviceLogin.Store(req.Allow)
-	writeJSON(w, http.StatusOK, map[string]any{"allowNewDeviceLogin": s.allowNewDeviceLogin.Load()})
 }
 
 func (s *Server) handleAdminListAppDevices(w http.ResponseWriter, r *http.Request) {
