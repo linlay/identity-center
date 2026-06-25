@@ -20,8 +20,8 @@ require_file "$IMAGE_ASSETS_DIR/issue-bridge-access-token.sh"
 require_file "$IMAGE_ASSETS_DIR/issue-bridge-runner-token.sh"
 
 PLATFORM="linux/$ARCH"
-BACKEND_IMAGE="identity-center-backend:$VERSION"
-FRONTEND_IMAGE="identity-center-frontend:$VERSION"
+BACKEND_IMAGE="identity-center-backend:bundle"
+FRONTEND_IMAGE="identity-center-frontend:bundle"
 IMAGE_ARCHIVE_NAME="${APP_NAME}-image-${VERSION}-linux-${ARCH}.tar.gz"
 IMAGE_BUNDLE_NAME="$(image_bundle_filename "$VERSION" "linux" "$ARCH")"
 
@@ -72,7 +72,7 @@ docker buildx build \
 log "exporting images..."
 docker save "$BACKEND_IMAGE" "$FRONTEND_IMAGE" | gzip -c > "$BUNDLE_STAGE/images/$IMAGE_ARCHIVE_NAME"
 
-copy_env_example_with_version "$BUNDLE_STAGE/.env.example"
+copy_env_example "$BUNDLE_STAGE/.env.example"
 cp "$IMAGE_ASSETS_DIR/README.txt" "$BUNDLE_STAGE/README.txt"
 cp "$IMAGE_ASSETS_DIR/load-image.sh" "$BUNDLE_STAGE/load-image.sh"
 cp "$IMAGE_ASSETS_DIR/start.sh" "$BUNDLE_STAGE/start.sh"

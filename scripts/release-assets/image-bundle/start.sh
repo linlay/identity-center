@@ -19,10 +19,9 @@ set -a
 . "$ENV_FILE"
 set +a
 
-IDENTITY_CENTER_VERSION="${IDENTITY_CENTER_VERSION:-latest}"
 FRONTEND_PORT="${FRONTEND_PORT:-11950}"
-BACKEND_IMAGE="identity-center-backend:$IDENTITY_CENTER_VERSION"
-FRONTEND_IMAGE="identity-center-frontend:$IDENTITY_CENTER_VERSION"
+BACKEND_IMAGE="identity-center-backend:bundle"
+FRONTEND_IMAGE="identity-center-frontend:bundle"
 
 if ! docker image inspect "$BACKEND_IMAGE" >/dev/null 2>&1 || ! docker image inspect "$FRONTEND_IMAGE" >/dev/null 2>&1; then
   "$LOAD_SCRIPT"
@@ -30,8 +29,8 @@ fi
 
 mkdir -p "$SCRIPT_DIR/data"
 
-export IDENTITY_CENTER_VERSION FRONTEND_PORT
+export FRONTEND_PORT
 docker compose --project-directory "$SCRIPT_DIR" -f "$COMPOSE_FILE" up -d
 
-echo "[start] started identity-center $IDENTITY_CENTER_VERSION"
+echo "[start] started identity-center"
 echo "[start] browser: http://127.0.0.1:${FRONTEND_PORT}/admin/"

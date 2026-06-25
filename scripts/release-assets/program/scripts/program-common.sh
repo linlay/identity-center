@@ -21,7 +21,7 @@ ERROR_LOG_FILE=""
 
 program_refresh_layout_paths() {
   ENV_FILE="$CONFIG_DIR/.env"
-  PID_FILE="$RUN_DIR/$APP_NAME.pid"
+  PID_FILE="$BUNDLE_ROOT/run/$APP_NAME.pid"
   LOG_FILE="$LOG_DIR/$APP_NAME.log"
   ERROR_LOG_FILE="$LOG_DIR/$APP_NAME.stderr.log"
 }
@@ -107,6 +107,31 @@ program_initialize_config() {
   fi
 }
 
+program_set_env_value() {
+  local key="$1"
+  local value="$2"
+  local tmp_file="$ENV_FILE.tmp.$$"
+  local found=0
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      "$key="*)
+        printf '%s=%s\n' "$key" "$value" >>"$tmp_file"
+        found=1
+        ;;
+      *)
+        printf '%s\n' "$line" >>"$tmp_file"
+        ;;
+    esac
+  done <"$ENV_FILE"
+
+  if [[ "$found" -eq 0 ]]; then
+    printf '%s=%s\n' "$key" "$value" >>"$tmp_file"
+  fi
+
+  mv "$tmp_file" "$ENV_FILE"
+}
+
 program_load_env() {
   [[ -f "$ENV_FILE" ]] || program_die "missing .env (copy from .env.example first)"
   set -a
@@ -139,7 +164,7 @@ program_load_env_optional() {
 }
 
 program_prepare_runtime_dirs() {
-  mkdir -p "$DATA_DIR" "$RUN_DIR" "$LOG_DIR"
+  mkdir -p "$DATA_DIR" "$RUN_DIR" "$LOG_DIR" "$(dirname "$PID_FILE")"
 }
 
 program_read_pid() {

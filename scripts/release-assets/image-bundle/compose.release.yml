@@ -3,7 +3,7 @@ name: identity-center
 services:
   identity-center-backend:
     container_name: identity-center-backend
-    image: identity-center-backend:${IDENTITY_CENTER_VERSION:-latest}
+    image: identity-center-backend:bundle
     env_file:
       - path: .env
         format: raw
@@ -16,7 +16,7 @@ services:
 
   identity-center-frontend:
     container_name: identity-center-frontend
-    image: identity-center-frontend:${IDENTITY_CENTER_VERSION:-latest}
+    image: identity-center-frontend:bundle
     depends_on:
       - identity-center-backend
     ports:

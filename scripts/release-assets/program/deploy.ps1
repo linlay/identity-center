@@ -2,13 +2,28 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $ScriptDir 'scripts/program-common.ps1')
-Set-ProgramLayoutArgs $args
+
+$AuthIssuer = ''
+for ($i = 0; $i -lt $args.Count; $i++) {
+  $arg = $args[$i]
+  switch ($arg) {
+    '--auth-issuer' {
+      if ($i + 1 -ge $args.Count) { Fail-Program 'missing value for --auth-issuer' }
+      $i++
+      $AuthIssuer = $args[$i]
+      continue
+    }
+    default { Fail-Program "unsupported argument: $arg" }
+  }
+}
 
 Set-Location $ScriptDir
-Test-ProgramBundle
 Initialize-ProgramConfig
-Initialize-ProgramRuntime
+if ($AuthIssuer) {
+  Set-ProgramEnvValue 'AUTH_ISSUER' $AuthIssuer
+}
 
-Write-Host '[program-deploy] bundle validated'
-Write-Host ("[program-deploy] backend binary: {0}" -f $script:BackendBin)
-Write-Host ("[program-deploy] runtime directories prepared under {0} and {1}" -f $script:DataDir, $script:RunDir)
+Write-Host ("[program-deploy] config initialized: {0}" -f $script:EnvFile)
+if ($AuthIssuer) {
+  Write-Host ("[program-deploy] AUTH_ISSUER={0}" -f $AuthIssuer)
+}

@@ -20,7 +20,7 @@ $Script:ErrorLogFile = ''
 
 function Update-ProgramLayoutPaths {
   $Script:EnvFile = Join-Path $Script:ConfigDir '.env'
-  $Script:PidFile = Join-Path $Script:RunDir 'identity-center.pid'
+  $Script:PidFile = Join-Path (Join-Path $Script:BundleRoot 'run') 'identity-center.pid'
   $Script:LogFile = Join-Path $Script:LogDir 'identity-center.log'
   $Script:ErrorLogFile = Join-Path $Script:LogDir 'identity-center.stderr.log'
 }
@@ -94,6 +94,28 @@ function Initialize-ProgramConfig {
   if (-not (Test-Path -LiteralPath $Script:EnvFile -PathType Leaf)) {
     Copy-Item -LiteralPath $Script:EnvExampleFile -Destination $Script:EnvFile
   }
+}
+
+function Set-ProgramEnvValue {
+  param(
+    [string]$Key,
+    [string]$Value
+  )
+
+  $found = $false
+  $lines = Get-Content -LiteralPath $Script:EnvFile
+  $updated = foreach ($line in $lines) {
+    if ($line.StartsWith("$Key=")) {
+      $found = $true
+      "$Key=$Value"
+    } else {
+      $line
+    }
+  }
+  if (-not $found) {
+    $updated += "$Key=$Value"
+  }
+  Set-Content -LiteralPath $Script:EnvFile -Value $updated
 }
 
 function Fail-Program([string]$Message) {
@@ -176,7 +198,7 @@ function Import-ProgramEnv {
 }
 
 function Initialize-ProgramRuntime {
-  New-Item -ItemType Directory -Force -Path $Script:DataDir, $Script:RunDir, $Script:LogDir | Out-Null
+  New-Item -ItemType Directory -Force -Path $Script:DataDir, $Script:RunDir, $Script:LogDir, (Split-Path -Parent $Script:PidFile) | Out-Null
 }
 
 function Clear-StaleProgramPid {
