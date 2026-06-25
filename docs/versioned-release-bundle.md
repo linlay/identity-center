@@ -79,7 +79,7 @@ Windows：
 ## 3. 目录职责
 
 - `manifest.json`：宿主识别和加载 bundle 的描述文件；宿主 Node HTTP server 依赖其中的 `frontend` / `api` 配置注册前端静态路由和 API 路由
-- `.env.example`：运行时配置模板
+- `.env.example`：根部署环境变量模板
 - `start.*` / `stop.*` / `deploy.*`：当前平台标准入口，默认只管理 backend
 - `scripts/`：当前平台辅助脚本与公共脚本；辅助脚本优先委托 backend 二进制执行 key/token 生成
 - `backend/identity-center(.exe)`：后端主程序
@@ -196,7 +196,7 @@ Windows 示例：
 后端：
 
 - 后端只包含编译后的二进制，不包含源码结构
-- 默认由 Program 启动脚本拉起，监听端口由 `SERVER_PORT` 控制
+- 默认由 Program 启动脚本拉起，监听端口由启动参数、`SERVER_PORT` 或内置默认值控制
 - 后端数据库路径默认是 `./data/auth.db`
 - 数据库 schema 已内嵌在后端二进制中，不依赖外置 `schema.sql`
 - 后端二进制提供 `setup-public-key`、`issue-bridge-access-token`、`issue-bridge-runner-token` 子命令，可直接生成 JWK PEM 文件和 bridge token，不依赖外部 `openssl` / `sqlite3` 命令

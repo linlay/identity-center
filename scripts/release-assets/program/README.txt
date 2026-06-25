@@ -7,7 +7,7 @@ identity-center — Program Bundle
 ========
 
 1. 复制 .env.example 为 .env，填入真实配置值。
-2. 运行 `./deploy.sh`，确认 frontend/dist 与 backend 二进制等运行条件已就绪。
+2. 运行 `./deploy.sh`，初始化或更新 .env 配置。
 3. macOS / Linux 运行 `./start.sh`；Windows 运行 `./start.ps1`。
 4. 宿主 nginx 或部署系统负责把 `/admin/`、`/admin/api`、`/api/openid`、`/api/oauth2` 路由到正确入口；旧 `/openid`、`/oauth2` 仅作兼容。
 5. 停止 backend 时，macOS / Linux 运行 `./stop.sh`；Windows 运行 `./stop.ps1`。
@@ -22,7 +22,7 @@ identity-center — Program Bundle
 目录说明
 ========
 
-.env.example                  — 环境变量模板
+.env.example                  — 根部署环境变量模板
 manifest.json                 — bundle 清单文件
 README.txt                    — 本文件
 当前平台对应的 start / stop / deploy 入口

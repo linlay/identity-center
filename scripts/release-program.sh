@@ -9,7 +9,6 @@ PROGRAM_ASSETS_DIR="$RELEASE_ASSETS_DIR/program"
 prepare_release_context
 ensure_release_requirements
 require_dir "$PROGRAM_ASSETS_DIR"
-require_file "$PROGRAM_ASSETS_DIR/env.example"
 require_dir "$PROGRAM_ASSETS_DIR/scripts"
 
 PROGRAM_TARGET_OUTPUT="$(program_target_matrix_lines)"
@@ -92,7 +91,7 @@ for pair in "${PROGRAM_TARGET_PAIRS[@]}"; do
   build_backend_binary "$target_os" "$target_arch" "$backend_binary"
 
   cp -R "$FRONTEND_DIST_DIR/." "$frontend_dir/dist/"
-  cp "$PROGRAM_ASSETS_DIR/env.example" "$bundle_root/.env.example"
+  cp "$REPO_ROOT/.env.example" "$bundle_root/.env.example"
   write_program_manifest "$bundle_root/manifest.json" "$target_os" "$target_arch" "$backend_entry" "$(program_bundle_filename "$VERSION" "$target_os" "$target_arch" "$archive_format")"
   if [[ "$target_os" == "windows" ]]; then
     cp "$PROGRAM_ASSETS_DIR/deploy.ps1" "$bundle_root/deploy.ps1"

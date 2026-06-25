@@ -129,9 +129,4 @@ make release-program
 
 构建产物为 Program Bundle，无需 Docker 即可运行；bundle 内包含后端可执行文件和前端静态资源，frontend 路由由宿主系统处理。
 
-关键环境变量：
-
-| 变量 | 说明 |
-|---|---|
-| `SERVER_PORT` | backend 监听端口 |
-| `AUTH_DB_PATH` | 认证数据库文件路径 |
+Program Bundle 使用根 `.env.example` 作为唯一运行配置模板；端口、数据目录和日志目录由启动脚本参数或内置 fallback 控制。
