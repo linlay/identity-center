@@ -373,14 +373,7 @@ write_program_manifest() {
         }
       ],
       "requires": []
-    },
-    "envBindings": [
-      {
-        "key": "SERVER_PORT",
-        "value": "{{serviceDefaultPort}}",
-        "onlyIfDefault": true
-      }
-    ]
+    }
   }
 }
 EOF

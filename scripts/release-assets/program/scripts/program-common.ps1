@@ -20,7 +20,7 @@ $Script:ErrorLogFile = ''
 
 function Update-ProgramLayoutPaths {
   $Script:EnvFile = Join-Path $Script:ConfigDir '.env'
-  $Script:PidFile = Join-Path (Join-Path $Script:BundleRoot 'run') 'identity-center.pid'
+  $Script:PidFile = Join-Path $Script:RunDir 'identity-center.pid'
   $Script:LogFile = Join-Path $Script:LogDir 'identity-center.log'
   $Script:ErrorLogFile = Join-Path $Script:LogDir 'identity-center.stderr.log'
 }
@@ -67,6 +67,29 @@ function Set-ProgramLayoutArgs {
       }
       default {
         Fail-Program "unsupported argument: $arg"
+      }
+    }
+  }
+  Update-ProgramLayoutPaths
+}
+
+function Set-ProgramStopArgs {
+  param([string[]]$Arguments)
+
+  for ($i = 0; $i -lt $Arguments.Count; $i++) {
+    $arg = $Arguments[$i]
+    switch ($arg) {
+      '--state-dir' {
+        if ($i + 1 -ge $Arguments.Count) { Fail-Program 'missing value for --state-dir' }
+        $i++
+        $Script:RunDir = $Arguments[$i]
+        continue
+      }
+      { $_ -in @('--config-dir', '--data-dir', '--log-dir', '--port', '--daemon') } {
+        Fail-Program "$arg is a start argument; stop.ps1 only accepts --state-dir"
+      }
+      default {
+        Fail-Program "unsupported stop argument: $arg"
       }
     }
   }

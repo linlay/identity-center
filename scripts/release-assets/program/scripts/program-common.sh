@@ -21,7 +21,7 @@ ERROR_LOG_FILE=""
 
 program_refresh_layout_paths() {
   ENV_FILE="$CONFIG_DIR/.env"
-  PID_FILE="$BUNDLE_ROOT/run/$APP_NAME.pid"
+  PID_FILE="$RUN_DIR/$APP_NAME.pid"
   LOG_FILE="$LOG_DIR/$APP_NAME.log"
   ERROR_LOG_FILE="$LOG_DIR/$APP_NAME.stderr.log"
 }
@@ -59,6 +59,25 @@ program_apply_layout_args() {
         ;;
       *)
         program_die "unsupported argument: $1"
+        ;;
+    esac
+  done
+  program_refresh_layout_paths
+}
+
+program_apply_stop_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --state-dir)
+        [[ $# -ge 2 ]] || program_die "missing value for --state-dir"
+        RUN_DIR="$2"
+        shift 2
+        ;;
+      --config-dir|--data-dir|--log-dir|--port|--daemon)
+        program_die "$1 is a start argument; stop.sh only accepts --state-dir"
+        ;;
+      *)
+        program_die "unsupported stop argument: $1"
         ;;
     esac
   done
