@@ -32,9 +32,7 @@ make release-image
 说明：
 
 - `make release` 等价于 `make release-program`。
-- `make release-program` 默认产出两个 Program Bundle：
-  - `darwin/arm64`
-  - `windows/amd64`
+- `make release-program` 默认产出当前宿主机 OS 与 `ARCH` 对应的一个 Program Bundle；未传入 `ARCH` 时使用宿主机架构。发布矩阵时显式传入 `PROGRAM_TARGETS` 或 `PROGRAM_TARGET_MATRIX`。
 - `make release-image` 默认产出当前宿主机架构对应的 Linux Image Bundle。
 - Program Bundle 是宿主机程序部署包，包含后端二进制和 `frontend/dist`。
 - Image Bundle 是容器镜像离线部署包，解压后导入镜像并通过 compose 启动。

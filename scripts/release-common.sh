@@ -6,7 +6,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RELEASE_ASSETS_DIR="$SCRIPT_DIR/release-assets"
 RELEASE_DIST_DIR="$REPO_ROOT/dist/release"
 APP_NAME="identity-center"
-DEFAULT_PROGRAM_TARGET_MATRIX="darwin/arm64,windows/amd64"
 
 die() { echo "[release] $*" >&2; exit 1; }
 log() { echo "[release] $*"; }
@@ -59,6 +58,15 @@ resolve_version() {
 
 detect_host_arch() {
   normalize_arch "$(uname -m)"
+}
+
+detect_host_os() {
+  case "$(uname -s)" in
+    Darwin) printf 'darwin\n' ;;
+    Linux) printf 'linux\n' ;;
+    MINGW*|MSYS*|CYGWIN*) printf 'windows\n' ;;
+    *) die "unsupported host OS: $(uname -s)" ;;
+  esac
 }
 
 load_bundle_env() {
@@ -413,5 +421,5 @@ program_target_matrix_lines() {
     return
   fi
 
-  PROGRAM_TARGET_MATRIX="$DEFAULT_PROGRAM_TARGET_MATRIX" program_target_matrix_lines
+  printf '%s/%s\n' "$(detect_host_os)" "$ARCH"
 }
