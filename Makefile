@@ -1,5 +1,10 @@
+ifeq ($(OS),Windows_NT)
+VERSION ?=
+ARCH ?= amd64
+else
 VERSION ?= $(shell cat VERSION 2>/dev/null)
 ARCH ?= $(shell uname -m | sed 's/^x86_64$$/amd64/' | sed 's/^aarch64$$/arm64/' | sed 's/^arm64$$/arm64/' | sed 's/^amd64$$/amd64/')
+endif
 
 .PHONY: backend-build backend-test frontend-build docker-build docker-up docker-down size-check release release-program release-image clean
 
@@ -28,8 +33,13 @@ size-check:
 release:
 	$(MAKE) release-program VERSION=$(VERSION) ARCH=$(ARCH) PROGRAM_TARGETS="$(PROGRAM_TARGETS)" PROGRAM_TARGET_MATRIX="$(PROGRAM_TARGET_MATRIX)"
 
+ifeq ($(OS),Windows_NT)
+release-program:
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-program.ps1 -Version "$(VERSION)" -Arch "$(ARCH)"
+else
 release-program:
 	VERSION=$(VERSION) ARCH=$(ARCH) PROGRAM_TARGETS="$(PROGRAM_TARGETS)" PROGRAM_TARGET_MATRIX="$(PROGRAM_TARGET_MATRIX)" bash scripts/release-program.sh
+endif
 
 release-image:
 	VERSION=$(VERSION) ARCH=$(ARCH) bash scripts/release-image.sh

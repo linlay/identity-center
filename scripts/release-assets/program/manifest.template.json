@@ -1,0 +1,171 @@
+{
+  "kind": "builtin",
+  "id": "identity-center",
+  "name": "认证服务",
+  "version": "__VERSION__",
+  "description": "认证与管理服务，提供 OAuth2/OIDC、管理后台、App 访问令牌和设备管理。",
+  "platform": {
+    "os": "__TARGET_OS__",
+    "arch": "__TARGET_ARCH__"
+  },
+  "frontend": {
+    "dist": "frontend/dist",
+    "index": "index.html",
+    "spa": true,
+    "mode": "standalone",
+    "entry": "/admin/"
+  },
+  "api": {
+    "enabled": true,
+    "adminBaseUrl": "/admin/api/",
+    "openidBaseUrl": "/api/openid/",
+    "oauth2BaseUrl": "/api/oauth2/"
+  },
+  "backend": {
+    "entry": "__BACKEND_ENTRY__"
+  },
+  "lifecycle": {
+    "start": ["__START_SCRIPT__", "--daemon"],
+    "stop": "__STOP_SCRIPT__",
+    "deploy": "__DEPLOY_SCRIPT__"
+  },
+  "configFiles": [
+    {
+      "key": "env",
+      "label": ".env",
+      "relativePath": ".env",
+      "templateRelativePath": ".env.example",
+      "required": true
+    }
+  ],
+  "runtime": {
+    "pidRelativePath": "run/identity-center.pid",
+    "logRelativePath": "run/identity-center.log",
+    "errorLogRelativePath": "run/identity-center.stderr.log",
+    "requiredPaths": [
+      "__BACKEND_ENTRY__",
+      "__START_SCRIPT__",
+      "__STOP_SCRIPT__",
+      "__DEPLOY_SCRIPT__",
+      "__PROGRAM_COMMON__",
+      "scripts/setup-public-key.__SCRIPT_EXT__",
+      "scripts/issue-bridge-access-token.__SCRIPT_EXT__",
+      "scripts/issue-bridge-runner-token.__SCRIPT_EXT__",
+      ".env.example",
+      "manifest.json",
+      "frontend/dist/index.html"
+    ]
+  },
+  "web": {
+    "routePath": "/admin/",
+    "portEnvKey": "SERVER_PORT",
+    "defaultPort": 11950
+  },
+  "desktop": {
+    "displayOrder": 4,
+    "autoStart": true,
+    "assetFileName": "__ASSET_FILENAME__",
+    "bundleTopLevelDir": "identity-center",
+    "capabilities": {
+      "provides": [
+        {
+          "id": "auth.publicKey",
+          "darwinCommand": [
+            "scripts/setup-public-key.sh",
+            "--mode",
+            "bootstrap",
+            "--db",
+            "{{auth.dbPath}}",
+            "--out",
+            "{{provider.dataDir}}/keys",
+            "--public-out",
+            "{{output.path}}"
+          ],
+          "linuxCommand": [
+            "scripts/setup-public-key.sh",
+            "--mode",
+            "bootstrap",
+            "--db",
+            "{{auth.dbPath}}",
+            "--out",
+            "{{provider.dataDir}}/keys",
+            "--public-out",
+            "{{output.path}}"
+          ],
+          "windowsCommand": [
+            "scripts/setup-public-key.ps1",
+            "-Mode",
+            "bootstrap",
+            "-Db",
+            "{{auth.dbPath}}",
+            "-Out",
+            "{{provider.dataDir}}/keys",
+            "-PublicOut",
+            "{{output.path}}"
+          ],
+          "env": {
+            "AUTH_DB_PATH": "{{auth.dbPath}}"
+          },
+          "output": "file",
+          "outputPath": "{{provider.dataDir}}/keys/publicKey.pem",
+          "retryOnSqliteBusy": true
+        },
+        {
+          "id": "auth.accessToken",
+          "darwinCommand": [
+            "scripts/issue-bridge-access-token.sh",
+            "--db",
+            "{{auth.dbPath}}",
+            "--issuer",
+            "{{auth.issuer}}",
+            "--username",
+            "{{auth.username}}",
+            "--device-name",
+            "{{desktop.deviceName}}",
+            "--device-id",
+            "{{desktop.deviceId}}"
+          ],
+          "linuxCommand": [
+            "scripts/issue-bridge-access-token.sh",
+            "--db",
+            "{{auth.dbPath}}",
+            "--issuer",
+            "{{auth.issuer}}",
+            "--username",
+            "{{auth.username}}",
+            "--device-name",
+            "{{desktop.deviceName}}",
+            "--device-id",
+            "{{desktop.deviceId}}"
+          ],
+          "windowsCommand": [
+            "scripts/issue-bridge-access-token.ps1",
+            "-Db",
+            "{{auth.dbPath}}",
+            "-Issuer",
+            "{{auth.issuer}}",
+            "-Username",
+            "{{auth.username}}",
+            "-DeviceName",
+            "{{desktop.deviceName}}",
+            "-DeviceId",
+            "{{desktop.deviceId}}"
+          ],
+          "env": {
+            "AUTH_DB_PATH": "{{auth.dbPath}}",
+            "AUTH_ISSUER": "{{auth.issuer}}",
+            "AUTH_APP_USERNAME": "{{auth.username}}",
+            "DESKTOP_DEVICE_ID": "{{desktop.deviceId}}"
+          },
+          "output": "stdoutLastLine",
+          "dependsOn": ["auth.publicKey"],
+          "retryOnSqliteBusy": true,
+          "validateJwtDeviceId": true,
+          "allowDeviceIdFallback": true
+        }
+      ],
+      "requires": []
+    }
+  }
+}
+
