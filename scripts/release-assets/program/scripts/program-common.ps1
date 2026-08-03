@@ -119,6 +119,51 @@ function Initialize-ProgramConfig {
   }
 }
 
+function Assert-DesktopConfigResetArgs([string]$BackupDir, [string]$VersionFrom, [string]$VersionTo) {
+  if (-not [System.IO.Path]::IsPathRooted($BackupDir)) { Fail-Program '--desktop-config-backup-dir must be absolute' }
+  if ([string]::IsNullOrWhiteSpace($VersionFrom)) { Fail-Program 'missing value for --desktop-version-from' }
+  if ([string]::IsNullOrWhiteSpace($VersionTo)) { Fail-Program 'missing value for --desktop-version-to' }
+  $configPath = [System.IO.Path]::GetFullPath($Script:ConfigDir).TrimEnd('\', '/')
+  $backupPath = [System.IO.Path]::GetFullPath($BackupDir).TrimEnd('\', '/')
+  if ($backupPath -eq $configPath -or $backupPath.StartsWith($configPath + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Fail-Program 'Desktop config backup directory must be outside the service config directory'
+  }
+}
+
+function Protect-ProgramConfigTree([string]$Target) {
+  if (-not (Test-Path -LiteralPath $Target)) { return }
+  $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+  & icacls.exe $Target '/inheritance:r' '/grant:r' ("{0}:(OI)(CI)F" -f $identity) '*S-1-5-18:(OI)(CI)F' '/T' '/C' | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail-Program "failed to restrict permissions for $Target" }
+}
+
+function Reset-DesktopProgramConfig([string]$BackupDir) {
+  $backupParent = Split-Path -Parent $BackupDir
+  $failedDir = $BackupDir + '.failed'
+  New-Item -ItemType Directory -Force -Path $backupParent | Out-Null
+  if (Test-Path -LiteralPath $BackupDir) {
+    Remove-Item -LiteralPath $failedDir -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $Script:ConfigDir) {
+      Move-Item -LiteralPath $Script:ConfigDir -Destination $failedDir
+      Protect-ProgramConfigTree $failedDir
+    }
+  } elseif (Test-Path -LiteralPath $Script:ConfigDir) {
+    Move-Item -LiteralPath $Script:ConfigDir -Destination $BackupDir
+    Protect-ProgramConfigTree $BackupDir
+  }
+  New-Item -ItemType Directory -Force -Path $Script:ConfigDir | Out-Null
+  Update-ProgramLayoutPaths
+}
+
+function Get-ProgramEnvLiteralValue([string]$Path, [string]$Name) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+  foreach ($line in [System.IO.File]::ReadAllLines($Path)) {
+    $match = [regex]::Match($line, ("^\s*(?:export\s+)?{0}\s*=(.*)$" -f [regex]::Escape($Name)))
+    if ($match.Success) { return $match.Groups[1].Value }
+  }
+  return $null
+}
+
 function Set-ProgramEnvValue {
   param(
     [string]$Key,

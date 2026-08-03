@@ -126,6 +126,60 @@ program_initialize_config() {
   fi
 }
 
+program_validate_desktop_config_reset_args() {
+  local backup_dir="$1"
+  local version_from="$2"
+  local version_to="$3"
+  [[ "$backup_dir" == /* ]] || program_die "--desktop-config-backup-dir must be absolute"
+  [[ -n "${version_from//[[:space:]]/}" ]] || program_die "missing value for --desktop-version-from"
+  [[ -n "${version_to//[[:space:]]/}" ]] || program_die "missing value for --desktop-version-to"
+  [[ "$backup_dir" != "$CONFIG_DIR" && "$backup_dir" != "$CONFIG_DIR/"* ]] || \
+    program_die "Desktop config backup directory must be outside the service config directory"
+}
+
+program_secure_config_tree() {
+  local target="$1"
+  [[ -e "$target" ]] || return
+  find "$target" -type d -exec chmod 700 {} +
+  find "$target" -type f -exec chmod 600 {} +
+}
+
+program_reset_desktop_config() {
+  local backup_dir="$1"
+  local backup_parent
+  local failed_dir="${backup_dir}.failed"
+  backup_parent="$(dirname "$backup_dir")"
+  mkdir -p "$backup_parent"
+  chmod 700 "$backup_parent"
+  if [[ -e "$backup_dir" ]]; then
+    rm -rf "$failed_dir"
+    if [[ -e "$CONFIG_DIR" ]]; then
+      mv "$CONFIG_DIR" "$failed_dir"
+      program_secure_config_tree "$failed_dir"
+    fi
+  elif [[ -e "$CONFIG_DIR" ]]; then
+    mv "$CONFIG_DIR" "$backup_dir"
+    program_secure_config_tree "$backup_dir"
+  fi
+  mkdir -p "$CONFIG_DIR"
+  chmod 700 "$CONFIG_DIR"
+  program_refresh_layout_paths
+}
+
+program_read_env_literal_value() {
+  local file="$1"
+  local name="$2"
+  [[ -f "$file" ]] || return 1
+  awk -v name="$name" '
+    $0 ~ "^[[:space:]]*(export[[:space:]]+)?" name "[[:space:]]*=" {
+      line = $0
+      sub("^[[:space:]]*(export[[:space:]]+)?" name "[[:space:]]*=", "", line)
+      print line
+      exit
+    }
+  ' "$file"
+}
+
 program_set_env_value() {
   local key="$1"
   local value="$2"

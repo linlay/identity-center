@@ -6,7 +6,7 @@ VERSION ?= $(shell cat VERSION 2>/dev/null)
 ARCH ?= $(shell uname -m | sed 's/^x86_64$$/amd64/' | sed 's/^aarch64$$/arm64/' | sed 's/^arm64$$/arm64/' | sed 's/^amd64$$/amd64/')
 endif
 
-.PHONY: backend-build backend-test frontend-build docker-build docker-up docker-down size-check release release-program release-image clean
+.PHONY: backend-build backend-test frontend-build test-program-deploy docker-build docker-up docker-down size-check release release-program release-image clean
 
 backend-build:
 	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w -buildid=' -o app ./cmd/server
@@ -16,6 +16,9 @@ backend-test:
 
 frontend-build:
 	cd frontend && npm ci && npm run build
+
+test-program-deploy:
+	bash scripts/test-program-deploy.sh
 
 docker-build:
 	docker compose build
