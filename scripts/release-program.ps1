@@ -116,12 +116,15 @@ foreach ($path in @(
     (Join-Path $AssetsDir "start.ps1"),
     (Join-Path $AssetsDir "stop.ps1"),
     (Join-Path $AssetsDir "scripts/program-common.ps1"),
+    $ProgramCommonTestPath,
     (Join-Path $AssetsDir "scripts/setup-public-key.ps1"),
     (Join-Path $AssetsDir "scripts/issue-bridge-access-token.ps1"),
     (Join-Path $AssetsDir "scripts/issue-bridge-runner-token.ps1")
 )) {
     if (-not (Test-Path -LiteralPath $path)) { throw "Required release input is missing: $path" }
 }
+
+& $ProgramCommonTestPath
 
 $Temporary = Join-Path ([IO.Path]::GetTempPath()) "$AppName-release.$([Guid]::NewGuid().ToString('N'))"
 $FrontendWork = Join-Path $Temporary "frontend"
