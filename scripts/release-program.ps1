@@ -12,6 +12,7 @@ $AppName = "identity-center"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $AssetsDir = Join-Path $ScriptDir "release-assets/program"
+$ProgramCommonTestPath = Join-Path $AssetsDir "scripts/program-common_test.ps1"
 $TemplatePath = Join-Path $AssetsDir "manifest.template.json"
 $ReleaseDir = Join-Path $RepoRoot "dist/release"
 $Utf8NoBom = New-Object Text.UTF8Encoding($false)
