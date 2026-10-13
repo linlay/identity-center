@@ -68,6 +68,8 @@ type Config struct {
 	TokenRefreshTTL    time.Duration
 	TokenRotateRefresh bool
 
+	Email EmailConfig
+
 	CleanupRetention time.Duration
 	CleanupCron      string
 }
@@ -148,6 +150,11 @@ func LoadWithArgs(args []string) (*Config, error) {
 	cfg.CleanupRetention, err = parseFlexibleDuration(env("AUTH_CLEANUP_RETENTION", builtInDefaults.CleanupRetention))
 	if err != nil {
 		return nil, fmt.Errorf("invalid AUTH_CLEANUP_RETENTION: %w", err)
+	}
+
+	cfg.Email, err = loadEmailConfig()
+	if err != nil {
+		return nil, err
 	}
 
 	if err := validate(cfg); err != nil {

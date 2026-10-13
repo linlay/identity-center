@@ -133,3 +133,12 @@ func TestLegacyAppMasterPasswordRoutesAreRemoved(t *testing.T) {
 		t.Fatalf("legacy admin new-device-access status = %d, want 404", adminGateRR.Code)
 	}
 }
+
+func decodeBody(t *testing.T, rr *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var body map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v body=%s", err, rr.Body.String())
+	}
+	return body
+}

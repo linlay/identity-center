@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -40,8 +40,7 @@ const (
 	canonicalOAuth2BasePath    = "/api/oauth2"
 	legacyOpenIDBasePath       = "/openid"
 	legacyOAuth2BasePath       = "/oauth2"
-	appPairingTicketTTL        = 5 * time.Minute
-	appPairingMaxSecretMisses  = 5
+	accountLoginChallengeTTL   = 2 * time.Minute
 )
 
 //go:embed templates/*.html
@@ -61,24 +60,8 @@ type Server struct {
 	oauthSessionsMu sync.RWMutex
 	oauthSessions   map[string]model.OAuthUserSession
 
-	pairingTicketsMu sync.Mutex
-	pairingTickets   map[string]appPairingTicket
-
-	cron *cron.Cron
-}
-
-type appPairingTicket struct {
-	PairingID                     string
-	SecretSHA256                  [32]byte
-	DesktopDeviceID               string
-	DesktopIdentityCreatedAt      string
-	DesktopUsername               string
-	DesktopHostname               string
-	IdentityCenterIssuer          string
-	IdentityCenterPublicKeySHA256 string
-	APIBaseURL                    string
-	ExpiresAt                     time.Time
-	SecretMisses                  int
+	sendEmail func(context.Context, string, string, string) error
+	cron      *cron.Cron
 }
 
 type contextKey string
@@ -94,14 +77,16 @@ func New(cfg *config.Config, st *store.Store, keys *security.KeyManager, logger 
 		return nil, err
 	}
 	s := &Server{
-		cfg:            cfg,
-		store:          st,
-		keys:           keys,
-		templates:      tmpl,
-		logger:         logger,
-		adminSessions:  map[string]model.AdminSession{},
-		oauthSessions:  map[string]model.OAuthUserSession{},
-		pairingTickets: map[string]appPairingTicket{},
+		cfg:           cfg,
+		store:         st,
+		keys:          keys,
+		templates:     tmpl,
+		logger:        logger,
+		adminSessions: map[string]model.AdminSession{},
+		oauthSessions: map[string]model.OAuthUserSession{},
+	}
+	s.sendEmail = func(ctx context.Context, email, purpose, code string) error {
+		return sendAccountEmail(ctx, cfg.Email, email, purpose, code)
 	}
 	s.router = s.routes()
 
@@ -112,6 +97,12 @@ func New(cfg *config.Config, st *store.Store, keys *security.KeyManager, logger 
 		}
 		if _, err := s.store.DeleteTokenAuditIssuedOlderThan(cfg.CleanupRetention); err != nil {
 			s.logger.Printf("cleanup token audit failed: %v", err)
+		}
+		if err := s.store.CleanupEmailAuth(time.Now().UTC()); err != nil {
+			s.logger.Print("cleanup email auth failed")
+		}
+		if _, err := s.store.DeleteExpiredLoginChallengesOlderThan(cfg.CleanupRetention); err != nil {
+			s.logger.Printf("cleanup login challenges failed: %v", err)
 		}
 	})
 	if err != nil {
@@ -137,6 +128,7 @@ func (s *Server) Handler() http.Handler { return s.router }
 func (s *Server) routes() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(s.rememberEmailPeer)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.NoCache)
@@ -162,6 +154,7 @@ func (s *Server) routes() http.Handler {
 			pr.Put("/users/{userId}", s.handleUpdateUser)
 			pr.Patch("/users/{userId}/status", s.handlePatchUserStatus)
 			pr.Post("/users/{userId}/password", s.handleResetUserPassword)
+			pr.Post("/users/{userId}/email/unbind", s.handleAdminUnbindEmail)
 
 			pr.Get("/clients", s.handleListClients)
 			pr.Post("/clients", s.handleCreateClient)
@@ -183,13 +176,22 @@ func (s *Server) routes() http.Handler {
 
 	r.Route("/api", func(api chi.Router) {
 		api.Route("/auth", func(ar chi.Router) {
+			ar.Post("/account/login", s.handleAccountAppLogin)
+			ar.Post("/account/email/challenges", s.handleEmailLoginChallenge)
+			ar.Post("/account/email/login", s.handleEmailLogin)
+			ar.Post("/account/login-challenges", s.handleStartAccountLoginChallenge)
+			ar.Post("/account/login-challenges/{challengeId}/claim", s.handleClaimAccountLoginChallenge)
 			ar.Post("/refresh", s.handleAppRefresh)
-			ar.Post("/pairing/claim", s.handleAppPairingClaim)
 			ar.Get("/jwks", s.handleAppJWKS)
 
 			ar.Group(func(g chi.Router) {
 				g.Use(s.appBearerMiddleware)
-				g.Post("/pairing/start", s.handleAppPairingStart)
+				g.Post("/account/login-challenges/{challengeId}/confirm", s.handleConfirmAccountLoginChallenge)
+				g.Get("/account/security", s.handleAccountSecurity)
+				g.Post("/account/email/bind/challenges", s.handleEmailBindChallenge)
+				g.Post("/account/email/bind", s.handleEmailBind)
+				g.Post("/account/email/unbind/challenges", s.handleEmailUnbindChallenge)
+				g.Post("/account/email/unbind", s.handleEmailUnbind)
 				g.Post("/logout", s.handleAppLogout)
 				g.Get("/me", s.handleAppMe)
 				g.Get("/devices", s.handleAppDevices)
@@ -659,6 +661,188 @@ func (s *Server) handleAdminIssueAppToken(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (s *Server) handleAccountAppLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		DeviceName string `json:"deviceName"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.DeviceName) == "" || len([]rune(strings.TrimSpace(req.DeviceName))) > 64 {
+		writeAPIError(w, http.StatusBadRequest, "deviceName must contain 1-64 characters")
+		return
+	}
+	username := strings.TrimSpace(req.Username)
+	user, err := s.store.FindUserByUsername(username)
+	if err != nil || user.Status != "ACTIVE" || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+		writeAPIError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+	accessTTL, err := s.resolveAccessTTL(nil)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	result, err := s.createAccountAppLoginSession(user, req.DeviceName, accessTTL)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+type accountAppLoginResult struct {
+	SchemaVersion       int       `json:"schemaVersion"`
+	AccountID           string    `json:"accountId"`
+	Username            string    `json:"username"`
+	DeviceID            string    `json:"deviceId"`
+	DeviceName          string    `json:"deviceName"`
+	AccessToken         string    `json:"accessToken"`
+	AccessTokenExpireAt time.Time `json:"accessTokenExpireAt"`
+	DeviceToken         string    `json:"deviceToken,omitempty"`
+}
+
+func (s *Server) createAccountAppLoginSession(user *store.User, deviceName string, accessTTL time.Duration) (*accountAppLoginResult, error) {
+	created, err := s.store.CreateAccountSession(user.UserID, deviceName)
+	if err != nil {
+		return nil, err
+	}
+	return s.finishAccountAppLoginSession(user, created, accessTTL)
+}
+
+func (s *Server) finishAccountAppLoginSession(user *store.User, created store.CreateAccountSessionResult, accessTTL time.Duration) (*accountAppLoginResult, error) {
+	accessToken, issuedAt, expiresAt, err := s.issueAccountAppAccessToken(user, created.Session, accessTTL)
+	if err != nil {
+		_ = s.store.RevokeAccountSession(user.UserID, created.Session.DeviceID)
+		return nil, err
+	}
+	username := user.Username
+	deviceID := created.Session.DeviceID
+	deviceName := created.Session.DeviceName
+	if err := s.store.RecordTokenAudit("ACCOUNT_APP_ACCESS", accessToken, &username, &deviceID, &deviceName, nil, nil, issuedAt, &expiresAt); err != nil {
+		s.logger.Printf("record account app token audit failed: %v", err)
+	}
+	result := &accountAppLoginResult{
+		SchemaVersion:       1,
+		AccountID:           user.UserID,
+		Username:            user.Username,
+		DeviceID:            created.Session.DeviceID,
+		DeviceName:          created.Session.DeviceName,
+		AccessToken:         accessToken,
+		AccessTokenExpireAt: expiresAt,
+	}
+	result.DeviceToken = created.DeviceToken
+	return result, nil
+}
+
+func (s *Server) handleStartAccountLoginChallenge(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DeviceName string `json:"deviceName"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.DeviceName) == "" || len([]rune(strings.TrimSpace(req.DeviceName))) > 64 {
+		writeAPIError(w, http.StatusBadRequest, "deviceName must contain 1-64 characters")
+		return
+	}
+	created, err := s.store.CreateLoginChallenge(req.DeviceName, time.Now().UTC(), accountLoginChallengeTTL)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"schemaVersion": 1,
+		"challengeId":   created.Challenge.ChallengeID,
+		"claimToken":    created.ClaimToken,
+		"qrPayload":     map[string]string{"challengeId": created.Challenge.ChallengeID},
+		"expiresAt":     created.Challenge.ExpiresAt,
+	})
+}
+
+func (s *Server) handleConfirmAccountLoginChallenge(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.currentAccountPrincipal(w, r)
+	if !ok {
+		return
+	}
+	challenge, err := s.store.ConfirmLoginChallenge(
+		chi.URLParam(r, "challengeId"), principal.AccountID, principal.DeviceID,
+		time.Now().UTC(),
+	)
+	if err != nil {
+		writeLoginChallengeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"schemaVersion": 1,
+		"challengeId":   challenge.ChallengeID,
+		"status":        "confirmed",
+		"confirmedAt":   challenge.ConfirmedAt,
+	})
+}
+
+func (s *Server) handleClaimAccountLoginChallenge(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ClaimToken string `json:"claimToken"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	challenge, err := s.store.ClaimLoginChallenge(chi.URLParam(r, "challengeId"), req.ClaimToken, time.Now().UTC())
+	if err != nil {
+		writeLoginChallengeError(w, err)
+		return
+	}
+	user, err := s.store.FindUserByID(challenge.AccountID)
+	if err != nil || user.Status != "ACTIVE" {
+		writeAPIError(w, http.StatusUnauthorized, "account unavailable")
+		return
+	}
+	accessTTL, err := s.resolveAccessTTL(nil)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	result, err := s.createAccountAppLoginSession(
+		user, challenge.TargetDeviceName, accessTTL,
+	)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) currentAccountPrincipal(w http.ResponseWriter, r *http.Request) (model.AppPrincipal, bool) {
+	principal, ok := s.currentAppPrincipal(r)
+	if !ok || principal.AccountID == "" {
+		writeAPIError(w, http.StatusUnauthorized, "account session required")
+		return model.AppPrincipal{}, false
+	}
+	return principal, true
+}
+
+func writeLoginChallengeError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrLoginChallengeNotFound):
+		writeAPIError(w, http.StatusNotFound, "login challenge not found")
+	case errors.Is(err, store.ErrLoginChallengeExpired):
+		writeAPIError(w, http.StatusGone, "login challenge expired")
+	case errors.Is(err, store.ErrLoginChallengeNotReady):
+		writeAPIError(w, http.StatusConflict, "login challenge not confirmed")
+	case errors.Is(err, store.ErrLoginChallengeConfirmer):
+		writeAPIError(w, http.StatusForbidden, "confirming session is inactive")
+	case errors.Is(err, store.ErrLoginChallengeToken):
+		writeAPIError(w, http.StatusUnauthorized, "invalid login challenge token")
+	case errors.Is(err, store.ErrLoginChallengeConsumed):
+		writeAPIError(w, http.StatusConflict, "login challenge already consumed")
+	default:
+		writeInternalError(w, err)
+	}
+}
+
 type appLoginResult struct {
 	Username            string    `json:"username"`
 	DeviceID            string    `json:"deviceId"`
@@ -702,79 +886,12 @@ func (s *Server) createAppLoginSession(deviceName string, accessTTL time.Duratio
 	}, nil
 }
 
-func (s *Server) handleAppPairingStart(w http.ResponseWriter, r *http.Request) {
-	principal, ok := s.currentAppPrincipal(r)
-	if !ok {
-		writeAPIError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
+func (s *Server) handleAppRefresh(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		DesktopIdentityCreatedAt      string `json:"desktopIdentityCreatedAt"`
-		DesktopUsername               string `json:"desktopUsername"`
-		DesktopHostname               string `json:"desktopHostname"`
-		IdentityCenterPublicKeySHA256 string `json:"identityCenterPublicKeySha256"`
-		APIBaseURL                    string `json:"apiBaseUrl"`
-	}
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	pairingID := uuid.NewString()
-	secret, err := randomToken(32)
-	if err != nil {
-		writeInternalError(w, err)
-		return
-	}
-	now := time.Now().UTC()
-	ticket := appPairingTicket{
-		PairingID:                     pairingID,
-		SecretSHA256:                  appPairingSecretSHA256(secret),
-		DesktopDeviceID:               principal.DeviceID,
-		DesktopIdentityCreatedAt:      trimPairingField(req.DesktopIdentityCreatedAt, 80),
-		DesktopUsername:               trimPairingField(req.DesktopUsername, 80),
-		DesktopHostname:               trimPairingField(req.DesktopHostname, 120),
-		IdentityCenterIssuer:          s.cfg.Issuer,
-		IdentityCenterPublicKeySHA256: trimPairingField(req.IdentityCenterPublicKeySHA256, 96),
-		APIBaseURL:                    trimPairingField(req.APIBaseURL, 300),
-		ExpiresAt:                     now.Add(appPairingTicketTTL),
-	}
-	s.saveAppPairingTicket(ticket, now)
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"desktopDeviceId":               ticket.DesktopDeviceID,
-		"desktopIdentityCreatedAt":      ticket.DesktopIdentityCreatedAt,
-		"desktopUsername":               ticket.DesktopUsername,
-		"desktopHostname":               ticket.DesktopHostname,
-		"identityCenterIssuer":          ticket.IdentityCenterIssuer,
-		"identityCenterPublicKeySha256": ticket.IdentityCenterPublicKeySHA256,
-		"apiBaseUrl":                    ticket.APIBaseURL,
-		"pairingId":                     ticket.PairingID,
-		"secret":                        secret,
-		"expiresAt":                     ticket.ExpiresAt,
-	})
-}
-
-func (s *Server) handleAppPairingClaim(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		PairingID        string `json:"pairingId"`
-		Secret           string `json:"secret"`
-		DeviceName       string `json:"deviceName"`
+		DeviceToken      string `json:"deviceToken"`
 		AccessTTLSeconds *int   `json:"accessTtlSeconds"`
 	}
 	if !decodeJSON(w, r, &req) {
-		return
-	}
-	pairingID := strings.TrimSpace(req.PairingID)
-	secret := strings.TrimSpace(req.Secret)
-	if pairingID == "" || secret == "" {
-		writeAPIError(w, http.StatusBadRequest, "pairingId and secret are required")
-		return
-	}
-	if _, err := uuid.Parse(pairingID); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "invalid pairingId")
-		return
-	}
-	ticket, errMessage := s.claimAppPairingTicket(pairingID, secret, time.Now().UTC())
-	if errMessage != "" {
-		writeAPIError(w, http.StatusBadRequest, errMessage)
 		return
 	}
 	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds)
@@ -782,95 +899,8 @@ func (s *Server) handleAppPairingClaim(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	result, appErr := s.createAppLoginSession(req.DeviceName, accessTTL)
-	if appErr != nil {
-		writeAPIError(w, appErr.status, appErr.message)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"username":                      result.Username,
-		"deviceId":                      result.DeviceID,
-		"deviceName":                    result.DeviceName,
-		"accessToken":                   result.AccessToken,
-		"accessTokenExpireAt":           result.AccessTokenExpireAt,
-		"deviceToken":                   result.DeviceToken,
-		"desktopDeviceId":               ticket.DesktopDeviceID,
-		"desktopIdentityCreatedAt":      ticket.DesktopIdentityCreatedAt,
-		"desktopUsername":               ticket.DesktopUsername,
-		"desktopHostname":               ticket.DesktopHostname,
-		"identityCenterIssuer":          ticket.IdentityCenterIssuer,
-		"identityCenterPublicKeySha256": ticket.IdentityCenterPublicKeySHA256,
-		"apiBaseUrl":                    ticket.APIBaseURL,
-	})
-}
-
-func appPairingSecretSHA256(secret string) [32]byte {
-	return sha256.Sum256([]byte(secret))
-}
-
-func trimPairingField(value string, maxRunes int) string {
-	trimmed := strings.TrimSpace(value)
-	if maxRunes <= 0 {
-		return trimmed
-	}
-	count := 0
-	for index := range trimmed {
-		if count == maxRunes {
-			return trimmed[:index]
-		}
-		count += 1
-	}
-	return trimmed
-}
-
-func (s *Server) saveAppPairingTicket(ticket appPairingTicket, now time.Time) {
-	s.pairingTicketsMu.Lock()
-	defer s.pairingTicketsMu.Unlock()
-	if s.pairingTickets == nil {
-		s.pairingTickets = map[string]appPairingTicket{}
-	}
-	for id, existing := range s.pairingTickets {
-		if !existing.ExpiresAt.After(now) {
-			delete(s.pairingTickets, id)
-		}
-	}
-	s.pairingTickets[ticket.PairingID] = ticket
-}
-
-func (s *Server) claimAppPairingTicket(pairingID, secret string, now time.Time) (appPairingTicket, string) {
-	s.pairingTicketsMu.Lock()
-	defer s.pairingTicketsMu.Unlock()
-	if s.pairingTickets == nil {
-		return appPairingTicket{}, "pairing ticket not found"
-	}
-	ticket, ok := s.pairingTickets[pairingID]
-	if !ok {
-		return appPairingTicket{}, "pairing ticket not found"
-	}
-	if !ticket.ExpiresAt.After(now) {
-		delete(s.pairingTickets, pairingID)
-		return appPairingTicket{}, "pairing ticket expired"
-	}
-	secretHash := appPairingSecretSHA256(secret)
-	if subtle.ConstantTimeCompare(secretHash[:], ticket.SecretSHA256[:]) != 1 {
-		ticket.SecretMisses += 1
-		if ticket.SecretMisses >= appPairingMaxSecretMisses {
-			delete(s.pairingTickets, pairingID)
-		} else {
-			s.pairingTickets[pairingID] = ticket
-		}
-		return appPairingTicket{}, "invalid pairing secret"
-	}
-	delete(s.pairingTickets, pairingID)
-	return ticket, ""
-}
-
-func (s *Server) handleAppRefresh(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		DeviceToken      string `json:"deviceToken"`
-		AccessTTLSeconds *int   `json:"accessTtlSeconds"`
-	}
-	if !decodeJSON(w, r, &req) {
+	if strings.Contains(strings.TrimSpace(req.DeviceToken), ".") {
+		s.handleAccountAppRefresh(w, req.DeviceToken, accessTTL)
 		return
 	}
 	device, err := s.store.FindActiveDeviceByToken(req.DeviceToken)
@@ -896,11 +926,6 @@ func (s *Server) handleAppRefresh(w http.ResponseWriter, r *http.Request) {
 	if updatedDevice == nil {
 		updatedDevice = device
 	}
-	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds)
-	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	accessToken, issuedAt, expAt, err := s.issueAppAccessToken(s.cfg.AppUsername, updatedDevice.DeviceID, accessTTL)
 	if err != nil {
 		writeInternalError(w, err)
@@ -918,6 +943,54 @@ func (s *Server) handleAppRefresh(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleAccountAppRefresh(w http.ResponseWriter, deviceToken string, accessTTL time.Duration) {
+	device, err := s.store.FindActiveAccountSessionByToken(deviceToken)
+	if err != nil {
+		writeAPIError(w, http.StatusUnauthorized, "invalid device token")
+		return
+	}
+	user, err := s.store.FindUserByID(device.AccountID)
+	if err != nil || user.Status != "ACTIVE" {
+		writeAPIError(w, http.StatusUnauthorized, "invalid device token")
+		return
+	}
+	accessToken, issuedAt, expiresAt, err := s.issueAccountAppAccessToken(user, *device, accessTTL)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	nextDeviceToken := deviceToken
+	if s.cfg.AppRotateDeviceToken {
+		nextDeviceToken, err = s.store.RotateAccountSessionCredential(device.AccountID, device.DeviceID, device.DeviceTokenBcrypt)
+	} else {
+		err = s.store.TouchAccountSession(device.AccountID, device.DeviceID)
+	}
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeAPIError(w, http.StatusUnauthorized, "invalid device token")
+			return
+		}
+		writeInternalError(w, err)
+		return
+	}
+	username := user.Username
+	deviceID := device.DeviceID
+	deviceName := device.DeviceName
+	if err := s.store.RecordTokenAudit("ACCOUNT_APP_ACCESS", accessToken, &username, &deviceID, &deviceName, nil, nil, issuedAt, &expiresAt); err != nil {
+		s.logger.Printf("record account app token audit failed: %v", err)
+	}
+	writeJSON(w, http.StatusOK, accountAppLoginResult{
+		SchemaVersion:       1,
+		AccountID:           device.AccountID,
+		Username:            user.Username,
+		DeviceID:            device.DeviceID,
+		DeviceName:          device.DeviceName,
+		AccessToken:         accessToken,
+		AccessTokenExpireAt: expiresAt,
+		DeviceToken:         nextDeviceToken,
+	})
+}
+
 func (s *Server) handleAdminRefreshAppToken(w http.ResponseWriter, r *http.Request) {
 	s.handleAppRefresh(w, r)
 }
@@ -928,7 +1001,16 @@ func (s *Server) handleAppLogout(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	_ = s.store.RevokeDevice(principal.DeviceID)
+	var err error
+	if principal.AccountID != "" {
+		err = s.store.RevokeAccountSession(principal.AccountID, principal.DeviceID)
+	} else {
+		err = s.store.RevokeDevice(principal.DeviceID)
+	}
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
 	_ = s.store.MarkTokensRevokedByDeviceID(principal.DeviceID)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -940,13 +1022,20 @@ func (s *Server) handleAppMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"username": principal.Username,
-		"deviceId": principal.DeviceID,
-		"issuedAt": principal.IssuedAt,
+		"schemaVersion": 1,
+		"username":      principal.Username,
+		"accountId":     principal.AccountID,
+		"deviceId":      principal.DeviceID,
+		"issuedAt":      principal.IssuedAt,
 	})
 }
 
 func (s *Server) handleAppDevices(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.currentAppPrincipal(r)
+	if !ok || principal.AccountID != "" {
+		writeAPIError(w, http.StatusForbidden, "legacy app session required")
+		return
+	}
 	devices, err := s.store.ListDevices()
 	if err != nil {
 		writeInternalError(w, err)
@@ -956,6 +1045,11 @@ func (s *Server) handleAppDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAppRenameDevice(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.currentAppPrincipal(r)
+	if !ok || principal.AccountID != "" {
+		writeAPIError(w, http.StatusForbidden, "legacy app session required")
+		return
+	}
 	deviceID := chi.URLParam(r, "deviceId")
 	if _, err := uuid.Parse(deviceID); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid device id")
@@ -984,6 +1078,11 @@ func (s *Server) handleAppRenameDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAppDeleteDevice(w http.ResponseWriter, r *http.Request) {
+	principal, ok := s.currentAppPrincipal(r)
+	if !ok || principal.AccountID != "" {
+		writeAPIError(w, http.StatusForbidden, "legacy app session required")
+		return
+	}
 	deviceID := chi.URLParam(r, "deviceId")
 	_ = s.store.RevokeDevice(deviceID)
 	_ = s.store.MarkTokensRevokedByDeviceID(deviceID)
@@ -1688,6 +1787,30 @@ func (s *Server) issueAppAccessToken(username, deviceID string, ttl time.Duratio
 	return tkn, now, exp, nil
 }
 
+func (s *Server) issueAccountAppAccessToken(user *store.User, device store.AccountSession, ttl time.Duration) (token string, issuedAt, expiresAt time.Time, err error) {
+	key, err := s.keys.LoadOrCreate()
+	if err != nil {
+		return "", time.Time{}, time.Time{}, err
+	}
+	now := time.Now().UTC()
+	expiresAt = now.Add(ttl)
+	claims := map[string]any{
+		"iss":        s.cfg.Issuer,
+		"sub":        user.Username,
+		"account_id": user.UserID,
+		"device_id":  device.DeviceID,
+		"iat":        now.Unix(),
+		"exp":        expiresAt.Unix(),
+		"scope":      "app tunnel",
+		"aud":        []string{"app", "tunnel"},
+	}
+	token, err = security.SignJWT(key, claims)
+	if err != nil {
+		return "", time.Time{}, time.Time{}, err
+	}
+	return token, now, expiresAt, nil
+}
+
 func (s *Server) authenticateAppAccessToken(token string) (*model.AppPrincipal, error) {
 	if strings.TrimSpace(token) == "" {
 		return nil, fmt.Errorf("empty token")
@@ -1703,7 +1826,7 @@ func (s *Server) authenticateAppAccessToken(token string) (*model.AppPrincipal, 
 	if toString(claims["iss"]) != s.cfg.Issuer {
 		return nil, fmt.Errorf("invalid issuer")
 	}
-	if toString(claims["scope"]) != "app" {
+	if !stringsContainWord(toString(claims["scope"]), "app") {
 		return nil, fmt.Errorf("invalid scope")
 	}
 	expUnix := toInt64(claims["exp"])
@@ -1714,13 +1837,40 @@ func (s *Server) authenticateAppAccessToken(token string) (*model.AppPrincipal, 
 	if _, err := uuid.Parse(deviceID); err != nil {
 		return nil, fmt.Errorf("invalid device id")
 	}
+	issuedAtUnix := toInt64(claims["iat"])
+	accountID := toString(claims["account_id"])
+	if accountID != "" {
+		device, err := s.store.FindAccountSessionByID(accountID, deviceID)
+		if err != nil || device.Status != "ACTIVE" {
+			return nil, fmt.Errorf("device revoked")
+		}
+		user, err := s.store.FindUserByID(accountID)
+		if err != nil || user.Status != "ACTIVE" || user.Username != toString(claims["sub"]) {
+			return nil, fmt.Errorf("account inactive")
+		}
+		if err := s.store.TouchAccountSession(accountID, deviceID); err != nil {
+			return nil, err
+		}
+		return &model.AppPrincipal{
+			Username: toString(claims["sub"]), AccountID: accountID, DeviceID: deviceID,
+			IssuedAt: time.Unix(issuedAtUnix, 0).UTC(),
+		}, nil
+	}
 	active, err := s.store.IsDeviceActive(deviceID)
 	if err != nil || !active {
 		return nil, fmt.Errorf("device revoked")
 	}
 	_ = s.store.TouchDevice(deviceID)
-	issuedAtUnix := toInt64(claims["iat"])
 	return &model.AppPrincipal{Username: toString(claims["sub"]), DeviceID: deviceID, IssuedAt: time.Unix(issuedAtUnix, 0).UTC()}, nil
+}
+
+func stringsContainWord(value, expected string) bool {
+	for _, word := range strings.Fields(value) {
+		if word == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) issueOAuthAccessToken(user *store.User, clientID string, scopes []string) (token string, issuedAt, expiresAt time.Time, err error) {

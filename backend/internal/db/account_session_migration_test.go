@@ -1,0 +1,121 @@
+package db
+
+import (
+	"bytes"
+	"database/sql"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestInitEmbeddedSchemaMigratesLegacyDeviceToAccountSessions(t *testing.T) {
+	database, err := Open(filepath.Join(t.TempDir(), "legacy.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer database.Close()
+	if _, err := database.Exec(`
+		CREATE TABLE DEVICE_ (
+			DEVICE_ID_ TEXT PRIMARY KEY,
+			DEVICE_NAME_ TEXT NOT NULL,
+			DEVICE_TOKEN_BCRYPT_ TEXT NOT NULL,
+			STATUS_ TEXT NOT NULL DEFAULT 'ACTIVE',
+			LAST_SEEN_AT_ TIMESTAMP,
+			REVOKED_AT_ TIMESTAMP,
+			CREATE_AT_ TIMESTAMP NOT NULL,
+			UPDATE_AT_ TIMESTAMP NOT NULL
+		)
+	`); err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+	if err := InitEmbeddedSchema(database); err != nil {
+		t.Fatalf("migrate legacy schema: %v", err)
+	}
+
+	if err := InitEmbeddedSchema(database); err != nil {
+		t.Fatalf("repeat initialization: %v", err)
+	}
+	columns, err := tableColumns(database, "DEVICE_")
+	if err != nil {
+		t.Fatalf("read columns: %v", err)
+	}
+	for _, name := range []string{"ACCOUNT_ID_"} {
+		if !columns[name] {
+			t.Errorf("missing migrated column %s", name)
+		}
+	}
+	for _, obsolete := range []string{"DEVICE_KIND_", "TRUST_LEVEL_", "STATE_VERSION_"} {
+		if columns[obsolete] {
+			t.Errorf("obsolete device column %s", obsolete)
+		}
+	}
+	assertSQLiteObjectExists(t, database, "table", "LOGIN_CHALLENGE_")
+	assertSQLiteObjectExists(t, database, "index", "IDX_DEVICE_ACCOUNT_STATUS_")
+}
+
+func assertSQLiteObjectExists(t *testing.T, database *sql.DB, objectType, name string) {
+	t.Helper()
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = ? AND name = ?`, objectType, name).Scan(&count); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("%s %s does not exist", objectType, name)
+	}
+}
+
+func TestFileAndEmbeddedSchemaStayAligned(t *testing.T) {
+	raw, err := os.ReadFile("../../schema.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	embedded, err := embeddedSchemaFS.ReadFile("schema.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(bytes.TrimSpace(raw), bytes.TrimSpace(embedded)) {
+		t.Fatal("shipped file schema differs from embedded schema")
+	}
+	database, err := Open(filepath.Join(t.TempDir(), "file.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := InitSchema(database, "../../schema.sql"); err != nil {
+		t.Fatal(err)
+	}
+	if err := InitSchema(database, "../../schema.sql"); err != nil {
+		t.Fatal(err)
+	}
+	assertSQLiteObjectExists(t, database, "table", "LOGIN_CHALLENGE_")
+	assertSQLiteObjectExists(t, database, "index", "IDX_DEVICE_ACCOUNT_STATUS_")
+}
+
+func TestLegacyExternalSchemaStillCreatesAccountLoginTables(t *testing.T) {
+	database, err := Open(filepath.Join(t.TempDir(), "legacy-external.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	legacy, err := embeddedSchemaFS.ReadFile("schema.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Recreate the pre-account external schema without adding a second migration engine.
+	legacy = bytes.ReplaceAll(legacy, []byte("    ACCOUNT_ID_ TEXT NOT NULL DEFAULT '',\n"), nil)
+	start := bytes.Index(legacy, []byte("CREATE TABLE IF NOT EXISTS LOGIN_CHALLENGE_"))
+	end := bytes.Index(legacy[start:], []byte("CREATE TABLE IF NOT EXISTS CHAT_EVENT_DEDUP_")) + start
+	legacy = append(legacy[:start], legacy[end:]...)
+	file := filepath.Join(t.TempDir(), "legacy.sql")
+	if err := os.WriteFile(file, legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := InitSchema(database, file); err != nil {
+		t.Fatal(err)
+	}
+	if err := InitSchema(database, file); err != nil {
+		t.Fatal(err)
+	}
+	assertSQLiteObjectExists(t, database, "table", "LOGIN_CHALLENGE_")
+	assertSQLiteObjectExists(t, database, "index", "IDX_DEVICE_ACCOUNT_STATUS_")
+}

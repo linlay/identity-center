@@ -3,9 +3,10 @@ package model
 import "time"
 
 type AppPrincipal struct {
-	Username string
-	DeviceID string
-	IssuedAt time.Time
+	Username  string
+	AccountID string
+	DeviceID  string
+	IssuedAt  time.Time
 }
 
 type AdminSession struct {

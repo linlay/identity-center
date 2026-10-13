@@ -175,6 +175,19 @@ export function AccountsPage() {
     }
   };
 
+  const unbindEmail = async (user) => {
+    const reason = window.prompt(`Reason for manually unbinding ${user.username}'s email (verify ownership first)`);
+    if (!reason?.trim() || !window.confirm('Unbind this email? Existing sessions remain signed in.')) return;
+    try {
+      await request(`/users/${user.userId}/email/unbind`, {
+        method: 'POST', body: JSON.stringify({ reason: reason.trim(), confirmed: true })
+      });
+      toast.success('Email unbound; reason recorded');
+    } catch (err) {
+      if (!isHandledUnauthorizedError(err)) toast.error(getErrorMessage(err, 'Failed to unbind email'));
+    }
+  };
+
   const toggleClientStatus = async (client) => {
     const status = client.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE';
     try {
@@ -232,6 +245,7 @@ export function AccountsPage() {
             {user.status === 'ACTIVE' ? 'Disable' : 'Activate'}
           </Button>
           <Button onClick={() => resetPassword(user)}>Reset Password</Button>
+          <Button variant="secondary" onClick={() => unbindEmail(user)}>Unbind Email</Button>
         </div>
       )
     }

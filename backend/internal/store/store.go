@@ -48,9 +48,9 @@ type OAuthClient struct {
 }
 
 type Device struct {
-	DeviceID          string `json:"deviceId"`
-	DeviceName        string `json:"deviceName"`
-	DeviceTokenBcrypt string
+	DeviceID          string     `json:"deviceId"`
+	DeviceName        string     `json:"deviceName"`
+	DeviceTokenBcrypt string     `json:"-"`
 	Status            string     `json:"status"`
 	LastSeenAt        *time.Time `json:"lastSeenAt"`
 	RevokedAt         *time.Time `json:"revokedAt"`
@@ -374,9 +374,7 @@ func (s *Store) CreateDevice(name, rawToken string) (*Device, error) {
 	if deviceName == "" {
 		deviceName = "Unknown Device"
 	}
-	if len(deviceName) > 64 {
-		deviceName = deviceName[:64]
-	}
+	deviceName = normalizeDeviceName(deviceName)
 	_, err = s.db.Exec(`INSERT INTO DEVICE_(DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_) VALUES(?, ?, ?, 'ACTIVE', ?, NULL, ?, ?)`, id, deviceName, string(tokenHash), now, now, now)
 	if err != nil {
 		return nil, err
@@ -386,11 +384,11 @@ func (s *Store) CreateDevice(name, rawToken string) (*Device, error) {
 
 func (s *Store) EnsureActiveDeviceWithHash(name, tokenHash string) (*Device, error) {
 	deviceName := normalizeDeviceName(name)
-	row := s.db.QueryRow(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE STATUS_ = 'ACTIVE' AND DEVICE_NAME_ = ? ORDER BY UPDATE_AT_ DESC LIMIT 1`, deviceName)
+	row := s.db.QueryRow(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE ACCOUNT_ID_ = '' AND STATUS_ = 'ACTIVE' AND DEVICE_NAME_ = ? ORDER BY UPDATE_AT_ DESC LIMIT 1`, deviceName)
 	device, err := scanDevice(row)
 	if err == nil {
 		now := time.Now().UTC()
-		if _, touchErr := s.db.Exec(`UPDATE DEVICE_ SET LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND STATUS_ = 'ACTIVE'`, now, now, device.DeviceID); touchErr != nil {
+		if _, touchErr := s.db.Exec(`UPDATE DEVICE_ SET LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND ACCOUNT_ID_ = '' AND STATUS_ = 'ACTIVE'`, now, now, device.DeviceID); touchErr != nil {
 			return nil, touchErr
 		}
 		return s.FindDeviceByID(device.DeviceID)
@@ -416,7 +414,7 @@ func (s *Store) EnsureActiveDeviceWithID(deviceID, name, tokenHash string) (*Dev
 			return nil, fmt.Errorf("device %s is not active", deviceID)
 		}
 		now := time.Now().UTC()
-		if _, touchErr := s.db.Exec(`UPDATE DEVICE_ SET LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND STATUS_ = 'ACTIVE'`, now, now, device.DeviceID); touchErr != nil {
+		if _, touchErr := s.db.Exec(`UPDATE DEVICE_ SET LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND ACCOUNT_ID_ = '' AND STATUS_ = 'ACTIVE'`, now, now, device.DeviceID); touchErr != nil {
 			return nil, touchErr
 		}
 		return s.FindDeviceByID(device.DeviceID)
@@ -437,19 +435,20 @@ func normalizeDeviceName(name string) string {
 	if deviceName == "" {
 		deviceName = "Unknown Device"
 	}
-	if len(deviceName) > 64 {
-		deviceName = deviceName[:64]
+	runes := []rune(deviceName)
+	if len(runes) > 64 {
+		deviceName = string(runes[:64])
 	}
 	return deviceName
 }
 
 func (s *Store) FindDeviceByID(deviceID string) (*Device, error) {
-	row := s.db.QueryRow(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE DEVICE_ID_ = ?`, deviceID)
+	row := s.db.QueryRow(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE DEVICE_ID_ = ? AND ACCOUNT_ID_ = ''`, deviceID)
 	return scanDevice(row)
 }
 
 func (s *Store) FindActiveDeviceByToken(rawToken string) (*Device, error) {
-	rows, err := s.db.Query(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE STATUS_ = 'ACTIVE' ORDER BY UPDATE_AT_ DESC`)
+	rows, err := s.db.Query(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE ACCOUNT_ID_ = '' AND STATUS_ = 'ACTIVE' ORDER BY UPDATE_AT_ DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +466,7 @@ func (s *Store) FindActiveDeviceByToken(rawToken string) (*Device, error) {
 }
 
 func (s *Store) ListDevices() ([]Device, error) {
-	rows, err := s.db.Query(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ ORDER BY UPDATE_AT_ DESC`)
+	rows, err := s.db.Query(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE ACCOUNT_ID_ = '' ORDER BY UPDATE_AT_ DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -485,7 +484,7 @@ func (s *Store) ListDevices() ([]Device, error) {
 
 func (s *Store) TouchDevice(deviceID string) error {
 	now := time.Now().UTC()
-	_, err := s.db.Exec(`UPDATE DEVICE_ SET LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND STATUS_ = 'ACTIVE'`, now, now, deviceID)
+	_, err := s.db.Exec(`UPDATE DEVICE_ SET LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND ACCOUNT_ID_ = '' AND STATUS_ = 'ACTIVE'`, now, now, deviceID)
 	return err
 }
 
@@ -495,16 +494,14 @@ func (s *Store) RenameDevice(deviceID, name string) error {
 	if deviceName == "" {
 		return fmt.Errorf("deviceName is required")
 	}
-	if len(deviceName) > 64 {
-		deviceName = deviceName[:64]
-	}
-	_, err := s.db.Exec(`UPDATE DEVICE_ SET DEVICE_NAME_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ?`, deviceName, now, deviceID)
+	deviceName = normalizeDeviceName(deviceName)
+	_, err := s.db.Exec(`UPDATE DEVICE_ SET DEVICE_NAME_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND ACCOUNT_ID_ = ''`, deviceName, now, deviceID)
 	return err
 }
 
 func (s *Store) RevokeDevice(deviceID string) error {
 	now := time.Now().UTC()
-	_, err := s.db.Exec(`UPDATE DEVICE_ SET STATUS_ = 'REVOKED', REVOKED_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND STATUS_ = 'ACTIVE'`, now, now, deviceID)
+	_, err := s.db.Exec(`UPDATE DEVICE_ SET STATUS_ = 'REVOKED', REVOKED_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND ACCOUNT_ID_ = '' AND STATUS_ = 'ACTIVE'`, now, now, deviceID)
 	return err
 }
 
@@ -514,12 +511,12 @@ func (s *Store) RotateDeviceToken(deviceID, rawToken string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`UPDATE DEVICE_ SET DEVICE_TOKEN_BCRYPT_ = ?, LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND STATUS_ = 'ACTIVE'`, string(hash), now, now, deviceID)
+	_, err = s.db.Exec(`UPDATE DEVICE_ SET DEVICE_TOKEN_BCRYPT_ = ?, LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND ACCOUNT_ID_ = '' AND STATUS_ = 'ACTIVE'`, string(hash), now, now, deviceID)
 	return err
 }
 
 func (s *Store) IsDeviceActive(deviceID string) (bool, error) {
-	row := s.db.QueryRow(`SELECT COUNT(*) FROM DEVICE_ WHERE DEVICE_ID_ = ? AND STATUS_ = 'ACTIVE'`, deviceID)
+	row := s.db.QueryRow(`SELECT COUNT(*) FROM DEVICE_ WHERE DEVICE_ID_ = ? AND ACCOUNT_ID_ = '' AND STATUS_ = 'ACTIVE'`, deviceID)
 	var count int
 	if err := row.Scan(&count); err != nil {
 		return false, err
@@ -543,10 +540,14 @@ func (s *Store) RecordTokenAudit(source, token string, username, deviceID, devic
 	if strings.TrimSpace(source) == "" || strings.TrimSpace(token) == "" {
 		return nil
 	}
+	tokenValue := token
+	if source == "ACCOUNT_APP_ACCESS" {
+		tokenValue = ""
+	}
 	tokenSHA256 := sha256Hex(token)
 	now := time.Now().UTC()
 	_, err := s.db.Exec(`INSERT INTO TOKEN_AUDIT_(TOKEN_ID_, SOURCE_, TOKEN_VALUE_, TOKEN_SHA256_, USERNAME_, DEVICE_ID_, DEVICE_NAME_, CLIENT_ID_, AUTHORIZATION_ID_, ISSUED_AT_, EXPIRES_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(TOKEN_SHA256_) DO UPDATE SET SOURCE_=excluded.SOURCE_, TOKEN_VALUE_=excluded.TOKEN_VALUE_, USERNAME_=excluded.USERNAME_, DEVICE_ID_=excluded.DEVICE_ID_, DEVICE_NAME_=excluded.DEVICE_NAME_, CLIENT_ID_=excluded.CLIENT_ID_, AUTHORIZATION_ID_=excluded.AUTHORIZATION_ID_, ISSUED_AT_=excluded.ISSUED_AT_, EXPIRES_AT_=excluded.EXPIRES_AT_, UPDATE_AT_=excluded.UPDATE_AT_`,
-		uuid.NewString(), strings.ToUpper(source), token, tokenSHA256, nullable(username), nullable(deviceID), nullable(deviceName), nullable(clientID), nullable(authorizationID), issuedAt.UTC(), timePtrValue(expiresAt), now, now)
+		uuid.NewString(), strings.ToUpper(source), tokenValue, tokenSHA256, nullable(username), nullable(deviceID), nullable(deviceName), nullable(clientID), nullable(authorizationID), issuedAt.UTC(), timePtrValue(expiresAt), now, now)
 	return err
 }
 
