@@ -58,9 +58,8 @@ func GenerateEmailCode() (string, error) {
 }
 
 type EmailBinding struct {
-	Email              string    `json:"email"`
-	BoundAt            time.Time `json:"boundAt"`
-	Key, ID, AccountID string    `json:"-"`
+	Email   string    `json:"email"`
+	BoundAt time.Time `json:"boundAt"`
 }
 type EmailChallenge struct {
 	SchemaVersion                                                    int       `json:"schemaVersion"`
@@ -80,7 +79,7 @@ type EmailChallengeInput struct {
 func (s *Store) AccountEmail(accountID string) (*EmailBinding, error) {
 	var b EmailBinding
 	var at int64
-	err := s.db.QueryRow(`SELECT EMAIL_,EMAIL_KEY_,BINDING_ID_,BOUND_AT_,ACCOUNT_ID_ FROM ACCOUNT_EMAIL_ WHERE ACCOUNT_ID_=?`, accountID).Scan(&b.Email, &b.Key, &b.ID, &at, &b.AccountID)
+	err := s.db.QueryRow(`SELECT EMAIL_,BOUND_AT_ FROM ACCOUNT_EMAIL_ WHERE ACCOUNT_ID_=?`, accountID).Scan(&b.Email, &at)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -94,8 +93,8 @@ func readEmailChallenge(tx *sql.Tx, clause string, args ...any) (*EmailChallenge
 	var c EmailChallenge
 	var hash string
 	var fails int
-	var at, expiry, resend int64
-	err := tx.QueryRow(`SELECT ID_,PURPOSE_,EMAIL_KEY_,EMAIL_,ACCOUNT_ID_,DEVICE_ID_,BINDING_ID_,STATUS_,CODE_HASH_,FAILURES_,CREATED_AT_,EXPIRES_AT_,RESEND_AT_ FROM EMAIL_CHALLENGE_ WHERE `+clause, args...).Scan(&c.ID, &c.Purpose, &c.EmailKey, &c.Email, &c.AccountID, &c.DeviceID, &c.BindingID, &c.Status, &hash, &fails, &at, &expiry, &resend)
+	var expiry, resend int64
+	err := tx.QueryRow(`SELECT ID_,PURPOSE_,EMAIL_KEY_,EMAIL_,ACCOUNT_ID_,DEVICE_ID_,BINDING_ID_,STATUS_,CODE_HASH_,FAILURES_,EXPIRES_AT_,RESEND_AT_ FROM EMAIL_CHALLENGE_ WHERE `+clause, args...).Scan(&c.ID, &c.Purpose, &c.EmailKey, &c.Email, &c.AccountID, &c.DeviceID, &c.BindingID, &c.Status, &hash, &fails, &expiry, &resend)
 	c.SchemaVersion = 1
 	c.ExpiresAt = time.UnixMilli(expiry).UTC()
 	c.ResendAvailableAt = time.UnixMilli(resend).UTC()
@@ -435,7 +434,7 @@ func (s *Store) ConsumeEmailChallenge(in EmailConsumeInput, now time.Time) (*Ema
 			if err := recordEmailAudit(tx, c.AccountID, in.DeviceID, "bind", EmailDigest(in.Secret, c.EmailKey), "", now); err != nil {
 				return err
 			}
-			result.Binding = &EmailBinding{Email: c.Email, BoundAt: now, ID: id, Key: c.EmailKey, AccountID: c.AccountID}
+			result.Binding = &EmailBinding{Email: c.Email, BoundAt: now}
 		case "unbind":
 			if err := unbindAccountEmail(tx, c.AccountID, in.DeviceID, EmailDigest(in.Secret, c.EmailKey), "", now); err != nil {
 				return err

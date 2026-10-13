@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -162,7 +161,7 @@ func (s *Server) handleEmailConsume(w http.ResponseWriter, r *http.Request, purp
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if purpose == "login" && (strings.TrimSpace(req.DeviceName) == "" || len([]rune(strings.TrimSpace(req.DeviceName))) > 64) {
+	if purpose == "login" && !store.ValidAccountSessionName(req.DeviceName) {
 		writeEmailError(w, store.ErrEmailFormat)
 		return
 	}

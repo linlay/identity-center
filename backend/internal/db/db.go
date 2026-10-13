@@ -36,7 +36,12 @@ func InitSchema(db *sql.DB, schemaPath string) error {
 	if err != nil {
 		return err
 	}
-	return initSchemaSQL(db, raw)
+	if _, err := db.Exec(string(raw)); err != nil {
+		return err
+	}
+	// External schemas may predate account authentication. Use the embedded
+	// schema to supply all required tables before migrating existing columns.
+	return InitEmbeddedSchema(db)
 }
 
 func InitEmbeddedSchema(db *sql.DB) error {
@@ -44,10 +49,6 @@ func InitEmbeddedSchema(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	return initSchemaSQL(db, raw)
-}
-
-func initSchemaSQL(db *sql.DB, raw []byte) error {
 	if _, err := db.Exec(string(raw)); err != nil {
 		return err
 	}
@@ -67,21 +68,6 @@ func ensureAccountSessionSchema(db *sql.DB) error {
 	_, err = db.Exec(`
 		CREATE INDEX IF NOT EXISTS IDX_DEVICE_ACCOUNT_STATUS_
 		ON DEVICE_(ACCOUNT_ID_, STATUS_, UPDATE_AT_ DESC);
-		CREATE TABLE IF NOT EXISTS LOGIN_CHALLENGE_ (
-			CHALLENGE_ID_ TEXT PRIMARY KEY,
-			CLAIM_TOKEN_SHA256_ TEXT NOT NULL,
-			TARGET_DEVICE_NAME_ TEXT NOT NULL,
-			STATUS_ TEXT NOT NULL,
-			ACCOUNT_ID_ TEXT NOT NULL DEFAULT '',
-			CONFIRMER_DEVICE_ID_ TEXT NOT NULL DEFAULT '',
-			EXPIRES_AT_ TIMESTAMP NOT NULL,
-			CONFIRMED_AT_ TIMESTAMP,
-			CLAIMED_AT_ TIMESTAMP,
-			CREATE_AT_ TIMESTAMP NOT NULL,
-			UPDATE_AT_ TIMESTAMP NOT NULL
-		);
-		CREATE INDEX IF NOT EXISTS IDX_LOGIN_CHALLENGE_EXPIRY_
-		ON LOGIN_CHALLENGE_(STATUS_, EXPIRES_AT_);
 	`)
 	return err
 }

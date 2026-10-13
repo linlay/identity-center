@@ -22,8 +22,10 @@ type CreateAccountSessionResult struct {
 	DeviceToken string
 }
 
-func validSessionName(name string) bool {
-	return strings.TrimSpace(name) != "" && len([]rune(name)) <= 64
+// ValidAccountSessionName checks the display name shared by all account login methods.
+func ValidAccountSessionName(name string) bool {
+	name = strings.TrimSpace(name)
+	return name != "" && len([]rune(name)) <= 64
 }
 
 func randomAuthSecret() (string, error) {
@@ -36,7 +38,7 @@ func randomAuthSecret() (string, error) {
 
 func prepareAccountSession(accountID, name string) (CreateAccountSessionResult, error) {
 	name = strings.TrimSpace(name)
-	if accountID == "" || !validSessionName(name) {
+	if accountID == "" || !ValidAccountSessionName(name) {
 		return CreateAccountSessionResult{}, errors.New("invalid account session")
 	}
 	id := uuid.NewString()

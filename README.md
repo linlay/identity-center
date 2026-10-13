@@ -2,7 +2,11 @@
 
 ## 1. 项目简介
 
-`identity-center` 是认证与管理服务，提供 OAuth2 / OIDC、管理后台、App 访问令牌和设备管理。
+`identity-center` 管理账号身份、密码/扫码/邮箱认证、登录会话和 OAuth2 / OIDC，并保留管理台与 CLI 使用的本地 App Token 能力。
+
+账号会话的 `deviceId` 标识一次登录，不是实体电脑 ID。Desktop 注册、归属、名称、撤销和在线状态由 Tunnel Hub 管理；Desktop 验证 Hub 访问票据后执行本地业务。默认云端继续使用自己的认证与数据契约。
+
+账号会话与扫码契约见 [account-session-api.md](docs/account-session-api.md)，邮箱认证作为独立交付范围见 [account-email-api.md](docs/account-email-api.md)。
 
 项目支持两种部署模式：Docker 容器编排（默认）和单二进制 Program Mode（用于桌面集成）。
 

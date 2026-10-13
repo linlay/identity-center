@@ -670,7 +670,7 @@ func (s *Server) handleAccountAppLogin(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if strings.TrimSpace(req.DeviceName) == "" || len([]rune(strings.TrimSpace(req.DeviceName))) > 64 {
+	if !store.ValidAccountSessionName(req.DeviceName) {
 		writeAPIError(w, http.StatusBadRequest, "deviceName must contain 1-64 characters")
 		return
 	}
@@ -744,7 +744,7 @@ func (s *Server) handleStartAccountLoginChallenge(w http.ResponseWriter, r *http
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if strings.TrimSpace(req.DeviceName) == "" || len([]rune(strings.TrimSpace(req.DeviceName))) > 64 {
+	if !store.ValidAccountSessionName(req.DeviceName) {
 		writeAPIError(w, http.StatusBadRequest, "deviceName must contain 1-64 characters")
 		return
 	}

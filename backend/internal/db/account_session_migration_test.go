@@ -91,21 +91,26 @@ func TestFileAndEmbeddedSchemaStayAligned(t *testing.T) {
 	assertSQLiteObjectExists(t, database, "index", "IDX_DEVICE_ACCOUNT_STATUS_")
 }
 
-func TestLegacyExternalSchemaStillCreatesAccountLoginTables(t *testing.T) {
+func TestLegacyExternalSchemaCreatesAllAccountAuthTablesAndPreservesData(t *testing.T) {
 	database, err := Open(filepath.Join(t.TempDir(), "legacy-external.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	legacy, err := embeddedSchemaFS.ReadFile("schema.sql")
+	// Frozen schema from main (ce351b8), before account sessions and email OTP.
+	legacy, err := os.ReadFile("testdata/legacy_schema.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Recreate the pre-account external schema without adding a second migration engine.
-	legacy = bytes.ReplaceAll(legacy, []byte("    ACCOUNT_ID_ TEXT NOT NULL DEFAULT '',\n"), nil)
-	start := bytes.Index(legacy, []byte("CREATE TABLE IF NOT EXISTS LOGIN_CHALLENGE_"))
-	end := bytes.Index(legacy[start:], []byte("CREATE TABLE IF NOT EXISTS CHAT_EVENT_DEDUP_")) + start
-	legacy = append(legacy[:start], legacy[end:]...)
+	if _, err := database.Exec(string(legacy)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO APP_USER_ VALUES('legacy-account', 'alice', 'unchanged-password', 'Alice', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+		INSERT INTO DEVICE_ VALUES('legacy-device', 'Old Device', 'unchanged-token', 'ACTIVE', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+	`); err != nil {
+		t.Fatal(err)
+	}
 	file := filepath.Join(t.TempDir(), "legacy.sql")
 	if err := os.WriteFile(file, legacy, 0600); err != nil {
 		t.Fatal(err)
@@ -116,6 +121,18 @@ func TestLegacyExternalSchemaStillCreatesAccountLoginTables(t *testing.T) {
 	if err := InitSchema(database, file); err != nil {
 		t.Fatal(err)
 	}
-	assertSQLiteObjectExists(t, database, "table", "LOGIN_CHALLENGE_")
+	for _, name := range []string{"LOGIN_CHALLENGE_", "ACCOUNT_EMAIL_", "EMAIL_CHALLENGE_", "EMAIL_LIMIT_", "EMAIL_AUDIT_"} {
+		assertSQLiteObjectExists(t, database, "table", name)
+	}
 	assertSQLiteObjectExists(t, database, "index", "IDX_DEVICE_ACCOUNT_STATUS_")
+	var accountID, deviceToken, password string
+	if err := database.QueryRow(`SELECT ACCOUNT_ID_, DEVICE_TOKEN_BCRYPT_ FROM DEVICE_ WHERE DEVICE_ID_='legacy-device'`).Scan(&accountID, &deviceToken); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT PASSWORD_BCRYPT_ FROM APP_USER_ WHERE USER_ID_='legacy-account'`).Scan(&password); err != nil {
+		t.Fatal(err)
+	}
+	if accountID != "" || deviceToken != "unchanged-token" || password != "unchanged-password" {
+		t.Fatalf("migration changed legacy data: account=%q deviceToken=%q password=%q", accountID, deviceToken, password)
+	}
 }

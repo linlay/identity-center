@@ -27,6 +27,8 @@ The user approved opaque public receipts on 2026-10-13. Unknown/disabled mailbox
 
 ## Deployment and rollback
 
+Email authentication is a separate review and release unit from account sessions and Desktop access. Its scope is the email handlers/SMTP sender, email storage/configuration, four email tables, admin unbind action and corresponding tests. It reuses the existing account session contract; Hub and Desktop protocols require no email-specific changes.
+
 Both `AUTH_EMAIL_LOGIN_ENABLED` and `AUTH_EMAIL_BIND_ENABLED` default false. `.env.example` declares the one SMTP sender and positive quotas. Set TLS to `tls` or `starttls`; certificate verification is mandatory. Timeout is 1–10 seconds. Configure a random digest key of at least 32 bytes, SMTP host/port, username/password, From and display name. Credentials stay in server environment configuration; never send them to the App. The default quotas (email 5/hour, 10/day; account 10/hour, 20/day; peer IP 30/hour, 100/day; failed verification 20/hour) are conservative configurable development defaults, pending provider/traffic validation. Public login uses mailbox/IP sending quotas; the one-to-one binding keeps the stricter mailbox quota effective for its account. All purposes share mailbox quota and cumulative failures.
 
 IP keys use the actual TCP peer, ignoring arbitrary forwarded headers. With the repository's frontend reverse proxy, this is a shared gateway limit; tune it to verified traffic before enabling production. Do not assume forwarded headers are trustworthy or add distributed storage without an actual deployment need.

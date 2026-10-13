@@ -2,7 +2,9 @@
 
 ## 1. 项目概览
 
-`identity-center` 是一套认证与管理服务，提供 OAuth2 / OIDC、管理后台、App 访问令牌和设备管理。
+`identity-center` 管理账号身份、密码/扫码/邮箱认证、登录会话和 OAuth2 / OIDC，保留管理台与 CLI 使用的本地 App Token 能力。
+
+账号会话的 `deviceId` 是登录会话 ID。Desktop 归属、目录、改名、撤销、在线状态和访问票据由 Tunnel Hub 管理，Identity 不维护另一份 Desktop 目录。默认云端认证继续独立。
 
 仓库采用双容器 fullstack 结构：
 
@@ -55,6 +57,8 @@
 - `BACKEND_PORT` 不再是有效部署变量；backend 容器内固定监听 `8080`
 - `AUTH_ISSUER`、admin bcrypt 仍是关键输入；前端入口固定为 `/admin/`
 - 当前仓库仍兼容旧代码里的可编辑配置文件能力，但它不再是默认部署模型
+- 外部 schema 执行后复用内置 schema 补齐当前必需表，再迁移旧 DEVICE_ 的账号列；不要在 Go 代码中复制完整建表定义
+- 密码、扫码和邮箱登录复用同一账号会话签发；邮箱与账号电脑访问分开审查、验收和发布
 
 ## 8. 开发流程
 

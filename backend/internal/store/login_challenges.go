@@ -22,17 +22,13 @@ var (
 )
 
 type LoginChallenge struct {
-	ChallengeID       string
-	ClaimTokenSHA256  string
-	TargetDeviceName  string
-	Status            string
-	AccountID         string
-	ConfirmerDeviceID string
-	ExpiresAt         time.Time
-	ConfirmedAt       *time.Time
-	ClaimedAt         *time.Time
-	CreateAt          time.Time
-	UpdateAt          time.Time
+	ChallengeID      string
+	ClaimTokenSHA256 string
+	TargetDeviceName string
+	Status           string
+	AccountID        string
+	ExpiresAt        time.Time
+	ConfirmedAt      *time.Time
 }
 
 type CreateLoginChallengeResult struct {
@@ -42,7 +38,7 @@ type CreateLoginChallengeResult struct {
 
 func (s *Store) CreateLoginChallenge(deviceName string, now time.Time, ttl time.Duration) (CreateLoginChallengeResult, error) {
 	deviceName = strings.TrimSpace(deviceName)
-	if !validSessionName(deviceName) || ttl <= 0 {
+	if !ValidAccountSessionName(deviceName) || ttl <= 0 {
 		return CreateLoginChallengeResult{}, errors.New("invalid login challenge input")
 	}
 	claimToken, err := randomAuthSecret()
@@ -53,7 +49,7 @@ func (s *Store) CreateLoginChallenge(deviceName string, now time.Time, ttl time.
 	challenge := LoginChallenge{
 		ChallengeID: uuid.NewString(), ClaimTokenSHA256: challengeTokenSHA256(claimToken),
 		TargetDeviceName: deviceName, Status: "PENDING",
-		ExpiresAt: now.Add(ttl), CreateAt: now, UpdateAt: now,
+		ExpiresAt: now.Add(ttl),
 	}
 	_, err = s.db.Exec(`INSERT INTO LOGIN_CHALLENGE_(CHALLENGE_ID_, CLAIM_TOKEN_SHA256_, TARGET_DEVICE_NAME_, STATUS_, ACCOUNT_ID_, CONFIRMER_DEVICE_ID_, EXPIRES_AT_, CONFIRMED_AT_, CLAIMED_AT_, CREATE_AT_, UPDATE_AT_) VALUES(?, ?, ?, 'PENDING', '', '', ?, NULL, NULL, ?, ?)`,
 		challenge.ChallengeID, challenge.ClaimTokenSHA256, challenge.TargetDeviceName, challenge.ExpiresAt, now, now)
@@ -64,7 +60,7 @@ func (s *Store) CreateLoginChallenge(deviceName string, now time.Time, ttl time.
 }
 
 func (s *Store) FindLoginChallenge(challengeID string, now time.Time) (*LoginChallenge, error) {
-	challenge, err := scanLoginChallenge(s.db.QueryRow(`SELECT CHALLENGE_ID_, CLAIM_TOKEN_SHA256_, TARGET_DEVICE_NAME_, STATUS_, ACCOUNT_ID_, CONFIRMER_DEVICE_ID_, EXPIRES_AT_, CONFIRMED_AT_, CLAIMED_AT_, CREATE_AT_, UPDATE_AT_ FROM LOGIN_CHALLENGE_ WHERE CHALLENGE_ID_ = ?`, strings.TrimSpace(challengeID)))
+	challenge, err := scanLoginChallenge(s.db.QueryRow(`SELECT CHALLENGE_ID_, CLAIM_TOKEN_SHA256_, TARGET_DEVICE_NAME_, STATUS_, ACCOUNT_ID_, EXPIRES_AT_, CONFIRMED_AT_ FROM LOGIN_CHALLENGE_ WHERE CHALLENGE_ID_ = ?`, strings.TrimSpace(challengeID)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrLoginChallengeNotFound
 	}
@@ -130,7 +126,7 @@ func (s *Store) ClaimLoginChallenge(challengeID, claimToken string, now time.Tim
 		}
 		return nil, ErrLoginChallengeConfirmer
 	}
-	challenge, err := scanLoginChallenge(tx.QueryRow(`SELECT CHALLENGE_ID_, CLAIM_TOKEN_SHA256_, TARGET_DEVICE_NAME_, STATUS_, ACCOUNT_ID_, CONFIRMER_DEVICE_ID_, EXPIRES_AT_, CONFIRMED_AT_, CLAIMED_AT_, CREATE_AT_, UPDATE_AT_ FROM LOGIN_CHALLENGE_ WHERE CHALLENGE_ID_ = ?`, strings.TrimSpace(challengeID)))
+	challenge, err := scanLoginChallenge(tx.QueryRow(`SELECT CHALLENGE_ID_, CLAIM_TOKEN_SHA256_, TARGET_DEVICE_NAME_, STATUS_, ACCOUNT_ID_, EXPIRES_AT_, CONFIRMED_AT_ FROM LOGIN_CHALLENGE_ WHERE CHALLENGE_ID_ = ?`, strings.TrimSpace(challengeID)))
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +137,7 @@ func (s *Store) ClaimLoginChallenge(challengeID, claimToken string, now time.Tim
 }
 
 func loginChallengeTransitionError(database *sql.DB, challengeID string, now time.Time) error {
-	challenge, err := scanLoginChallenge(database.QueryRow(`SELECT CHALLENGE_ID_, CLAIM_TOKEN_SHA256_, TARGET_DEVICE_NAME_, STATUS_, ACCOUNT_ID_, CONFIRMER_DEVICE_ID_, EXPIRES_AT_, CONFIRMED_AT_, CLAIMED_AT_, CREATE_AT_, UPDATE_AT_ FROM LOGIN_CHALLENGE_ WHERE CHALLENGE_ID_ = ?`, strings.TrimSpace(challengeID)))
+	challenge, err := scanLoginChallenge(database.QueryRow(`SELECT CHALLENGE_ID_, CLAIM_TOKEN_SHA256_, TARGET_DEVICE_NAME_, STATUS_, ACCOUNT_ID_, EXPIRES_AT_, CONFIRMED_AT_ FROM LOGIN_CHALLENGE_ WHERE CHALLENGE_ID_ = ?`, strings.TrimSpace(challengeID)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrLoginChallengeNotFound
 	}
@@ -156,11 +152,10 @@ func loginChallengeTransitionError(database *sql.DB, challengeID string, now tim
 
 func scanLoginChallenge(scanner interface{ Scan(...any) error }) (*LoginChallenge, error) {
 	var challenge LoginChallenge
-	var confirmedAt, claimedAt sql.NullTime
+	var confirmedAt sql.NullTime
 	if err := scanner.Scan(
 		&challenge.ChallengeID, &challenge.ClaimTokenSHA256, &challenge.TargetDeviceName,
-		&challenge.Status, &challenge.AccountID, &challenge.ConfirmerDeviceID,
-		&challenge.ExpiresAt, &confirmedAt, &claimedAt, &challenge.CreateAt, &challenge.UpdateAt,
+		&challenge.Status, &challenge.AccountID, &challenge.ExpiresAt, &confirmedAt,
 	); err != nil {
 		return nil, err
 	}
@@ -168,10 +163,6 @@ func scanLoginChallenge(scanner interface{ Scan(...any) error }) (*LoginChalleng
 	if confirmedAt.Valid {
 		value := confirmedAt.Time.UTC()
 		challenge.ConfirmedAt = &value
-	}
-	if claimedAt.Valid {
-		value := claimedAt.Time.UTC()
-		challenge.ClaimedAt = &value
 	}
 	return &challenge, nil
 }

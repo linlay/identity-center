@@ -11,9 +11,9 @@ QR login creates a two-minute challenge. The QR contains only challengeId; the s
 
 Account device credentials are hashed; account access-token audits store only a digest. Legacy local-service app authentication remains separate, and legacy device operations cannot access account-session records.
 
-Schema initialization only adds ACCOUNT_ID_ to the existing DEVICE_ table and creates LOGIN_CHALLENGE_. Existing legacy device records remain unassigned to accounts. No signing-key or issuer migration is performed. The initialization fallback DDL is retained because AUTH_SCHEMA_PATH can still point to a legacy external schema file; both embedded and external initialization must create the account/challenge tables.
+Both schema entrypoints use the embedded schema to create missing required tables, including login challenges and email authentication. AUTH_SCHEMA_PATH is executed first when configured. The existing DEVICE_ table receives only the missing ACCOUNT_ID_ column and its account index; old rows remain unassigned to accounts. Go does not duplicate challenge-table DDL. A frozen pre-account schema tests first and repeated initialization without changing legacy users or device credentials. No signing-key or issuer migration is performed.
 
-## 2026-10-12 call-site audit
+## Consumers and retired endpoints
 
 | Implementation | Current consumer | Decision |
 | --- | --- | --- |
@@ -28,13 +28,8 @@ Schema initialization only adds ACCOUNT_ID_ to the existing DEVICE_ table and cr
 
 Account and challenge secrets share the existing 32-byte random-secret helper. Expired challenge rows are removed by the existing cleanup cron after the configured retention period; there is no new worker or polling system. Failed session revocation returns an error rather than reporting successful logout.
 
-This review modifies Identity source only. It does not change cloud Token authentication, mobile/Hub/Desktop source, live databases, keys, environment configuration, dependency files or deployments. The pre-existing uncommitted account-session implementation and its used login-challenge flow are retained. Local test evidence and cleanup results follow.
+## Review and release boundary
 
-## Verification and cleanup
+Review account sessions, QR login and Desktop access separately from email authentication. First deploy with both email entry switches disabled and verify password/QR login, refresh, me, logout, Hub ownership checks and Desktop ticket validation. Email binding/login and SMTP readiness follow the independent checklist in account-email-api.md. This ordering does not introduce another token format or session store.
 
-- `make backend-test`: all backend packages pass, including admin-issued App Token and program CLI compatibility, account lifecycle/rotation, disabled accounts, logout write failure, revocation during validation, challenge concurrency, expiry cleanup and embedded/legacy-external schema initialization.
-- `go test -race ./internal/app ./internal/store ./internal/db`: passes the account/challenge concurrency and storage checks.
-- `go vet ./...`, `gofmt` and `git diff --check`: pass.
-- Review baseline: HEAD `f0e009c` and the existing working tree were recorded before mutation. Only the nine reviewed implementation/test/document paths were changed; the legacy pairing test was deliberately removed and its still-used JSON response decoder retained in the existing App Token test fixture.
-- Existing schema/model/legacy-store changes, frontend, dependency files, environment files, branch, HEAD and staged contents remain as before this review. No service was deployed or live database changed.
-- Go build cache, test temporary paths and network/module flags were process scoped. Task-owned draft copies, patches, build cache and logs were kept under a dedicated temporary directory and removed after the final audit.
+Regression commands: `make backend-test`, `go test -race ./internal/app ./internal/store ./internal/db`, `go vet ./...` and `git diff --check`. Tests use temporary databases; real deployment and devices require separate acceptance.
