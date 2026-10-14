@@ -159,7 +159,9 @@ func TestRetiredAuthenticationEndpointsAreNotReachable(t *testing.T) {
 	for _, request := range []struct{ method, path string }{
 		{"POST", "/api/auth/pairing/start"},
 		{"POST", "/api/auth/pairing/claim"},
-		{"GET", "/api/auth/account/login-challenges/11111111-1111-4111-8111-111111111111"},
+		{"POST", "/api/auth/account/login-challenges"},
+		{"POST", "/api/auth/account/login-challenges/11111111-1111-4111-8111-111111111111/confirm"},
+		{"POST", "/api/auth/account/login-challenges/11111111-1111-4111-8111-111111111111/claim"},
 	} {
 		if rr := accountRequest(t, s.Handler(), request.method, request.path, session["accessToken"].(string), nil); rr.Code != http.StatusNotFound {
 			t.Fatalf("retired route %s %s is still reachable: %d", request.method, request.path, rr.Code)

@@ -40,7 +40,6 @@ const (
 	canonicalOAuth2BasePath    = "/api/oauth2"
 	legacyOpenIDBasePath       = "/openid"
 	legacyOAuth2BasePath       = "/oauth2"
-	accountLoginChallengeTTL   = 2 * time.Minute
 )
 
 //go:embed templates/*.html
@@ -100,9 +99,6 @@ func New(cfg *config.Config, st *store.Store, keys *security.KeyManager, logger 
 		}
 		if err := s.store.CleanupEmailAuth(time.Now().UTC()); err != nil {
 			s.logger.Print("cleanup email auth failed")
-		}
-		if _, err := s.store.DeleteExpiredLoginChallengesOlderThan(cfg.CleanupRetention); err != nil {
-			s.logger.Printf("cleanup login challenges failed: %v", err)
 		}
 	})
 	if err != nil {
@@ -179,14 +175,11 @@ func (s *Server) routes() http.Handler {
 			ar.Post("/account/login", s.handleAccountAppLogin)
 			ar.Post("/account/email/challenges", s.handleEmailLoginChallenge)
 			ar.Post("/account/email/login", s.handleEmailLogin)
-			ar.Post("/account/login-challenges", s.handleStartAccountLoginChallenge)
-			ar.Post("/account/login-challenges/{challengeId}/claim", s.handleClaimAccountLoginChallenge)
 			ar.Post("/refresh", s.handleAppRefresh)
 			ar.Get("/jwks", s.handleAppJWKS)
 
 			ar.Group(func(g chi.Router) {
 				g.Use(s.appBearerMiddleware)
-				g.Post("/account/login-challenges/{challengeId}/confirm", s.handleConfirmAccountLoginChallenge)
 				g.Get("/account/security", s.handleAccountSecurity)
 				g.Post("/account/email/bind/challenges", s.handleEmailBindChallenge)
 				g.Post("/account/email/bind", s.handleEmailBind)
@@ -737,84 +730,6 @@ func (s *Server) finishAccountAppLoginSession(user *store.User, created store.Cr
 	return result, nil
 }
 
-func (s *Server) handleStartAccountLoginChallenge(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		DeviceName string `json:"deviceName"`
-	}
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	if !store.ValidAccountSessionName(req.DeviceName) {
-		writeAPIError(w, http.StatusBadRequest, "deviceName must contain 1-64 characters")
-		return
-	}
-	created, err := s.store.CreateLoginChallenge(req.DeviceName, time.Now().UTC(), accountLoginChallengeTTL)
-	if err != nil {
-		writeInternalError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"schemaVersion": 1,
-		"challengeId":   created.Challenge.ChallengeID,
-		"claimToken":    created.ClaimToken,
-		"qrPayload":     map[string]string{"challengeId": created.Challenge.ChallengeID},
-		"expiresAt":     created.Challenge.ExpiresAt,
-	})
-}
-
-func (s *Server) handleConfirmAccountLoginChallenge(w http.ResponseWriter, r *http.Request) {
-	principal, ok := s.currentAccountPrincipal(w, r)
-	if !ok {
-		return
-	}
-	challenge, err := s.store.ConfirmLoginChallenge(
-		chi.URLParam(r, "challengeId"), principal.AccountID, principal.DeviceID,
-		time.Now().UTC(),
-	)
-	if err != nil {
-		writeLoginChallengeError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"schemaVersion": 1,
-		"challengeId":   challenge.ChallengeID,
-		"status":        "confirmed",
-		"confirmedAt":   challenge.ConfirmedAt,
-	})
-}
-
-func (s *Server) handleClaimAccountLoginChallenge(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		ClaimToken string `json:"claimToken"`
-	}
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	challenge, err := s.store.ClaimLoginChallenge(chi.URLParam(r, "challengeId"), req.ClaimToken, time.Now().UTC())
-	if err != nil {
-		writeLoginChallengeError(w, err)
-		return
-	}
-	user, err := s.store.FindUserByID(challenge.AccountID)
-	if err != nil || user.Status != "ACTIVE" {
-		writeAPIError(w, http.StatusUnauthorized, "account unavailable")
-		return
-	}
-	accessTTL, err := s.resolveAccessTTL(nil)
-	if err != nil {
-		writeInternalError(w, err)
-		return
-	}
-	result, err := s.createAccountAppLoginSession(
-		user, challenge.TargetDeviceName, accessTTL,
-	)
-	if err != nil {
-		writeInternalError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, result)
-}
-
 func (s *Server) currentAccountPrincipal(w http.ResponseWriter, r *http.Request) (model.AppPrincipal, bool) {
 	principal, ok := s.currentAppPrincipal(r)
 	if !ok || principal.AccountID == "" {
@@ -822,25 +737,6 @@ func (s *Server) currentAccountPrincipal(w http.ResponseWriter, r *http.Request)
 		return model.AppPrincipal{}, false
 	}
 	return principal, true
-}
-
-func writeLoginChallengeError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, store.ErrLoginChallengeNotFound):
-		writeAPIError(w, http.StatusNotFound, "login challenge not found")
-	case errors.Is(err, store.ErrLoginChallengeExpired):
-		writeAPIError(w, http.StatusGone, "login challenge expired")
-	case errors.Is(err, store.ErrLoginChallengeNotReady):
-		writeAPIError(w, http.StatusConflict, "login challenge not confirmed")
-	case errors.Is(err, store.ErrLoginChallengeConfirmer):
-		writeAPIError(w, http.StatusForbidden, "confirming session is inactive")
-	case errors.Is(err, store.ErrLoginChallengeToken):
-		writeAPIError(w, http.StatusUnauthorized, "invalid login challenge token")
-	case errors.Is(err, store.ErrLoginChallengeConsumed):
-		writeAPIError(w, http.StatusConflict, "login challenge already consumed")
-	default:
-		writeInternalError(w, err)
-	}
 }
 
 type appLoginResult struct {

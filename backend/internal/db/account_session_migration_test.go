@@ -49,7 +49,6 @@ func TestInitEmbeddedSchemaMigratesLegacyDeviceToAccountSessions(t *testing.T) {
 			t.Errorf("obsolete device column %s", obsolete)
 		}
 	}
-	assertSQLiteObjectExists(t, database, "table", "LOGIN_CHALLENGE_")
 	assertSQLiteObjectExists(t, database, "index", "IDX_DEVICE_ACCOUNT_STATUS_")
 }
 
@@ -87,7 +86,6 @@ func TestFileAndEmbeddedSchemaStayAligned(t *testing.T) {
 	if err := InitSchema(database, "../../schema.sql"); err != nil {
 		t.Fatal(err)
 	}
-	assertSQLiteObjectExists(t, database, "table", "LOGIN_CHALLENGE_")
 	assertSQLiteObjectExists(t, database, "index", "IDX_DEVICE_ACCOUNT_STATUS_")
 }
 
@@ -121,7 +119,7 @@ func TestLegacyExternalSchemaCreatesAllAccountAuthTablesAndPreservesData(t *test
 	if err := InitSchema(database, file); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"LOGIN_CHALLENGE_", "ACCOUNT_EMAIL_", "EMAIL_CHALLENGE_", "EMAIL_LIMIT_", "EMAIL_AUDIT_"} {
+	for _, name := range []string{"ACCOUNT_EMAIL_", "EMAIL_CHALLENGE_", "EMAIL_LIMIT_", "EMAIL_AUDIT_"} {
 		assertSQLiteObjectExists(t, database, "table", name)
 	}
 	assertSQLiteObjectExists(t, database, "index", "IDX_DEVICE_ACCOUNT_STATUS_")

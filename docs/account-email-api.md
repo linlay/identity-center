@@ -1,6 +1,6 @@
 # Account email authentication (2026-10-13)
 
-Email login signs into an existing ACTIVE account with a verified binding. It never registers or merges an account. The original password/QR session contract and device credentials are unchanged.
+Email login signs into an existing ACTIVE account with a verified binding. It never registers or merges an account. The original password session contract and device credentials are unchanged.
 
 | Method and path | Authentication | JSON body / result |
 | --- | --- | --- |
@@ -37,4 +37,4 @@ IP keys use the actual TCP peer, ignoring arbitrary forwarded headers. With the 
 
 The two schema files create the new tables idempotently in existing databases. Tests migrate only temporary databases. Repository compose describes one backend and a `/data` mount; production topology, SMTP sender ownership/permission, real recipient tests and App devices have not been verified. Existing website email login is evidence of a deployed email capability, not evidence that its account IDs, SMTP configuration or registration policy match this Identity service. Locate its deployment owner and copy only verified server-side SMTP settings through secure configuration.
 
-Deploy the compatible backend with both switches false, verify migration and existing password/QR/refresh/logout, then publish App and enable each switch deliberately. Rollback disables new login and binding, preserves binding/audit data, existing sessions, user/admin unbinding and password login. No live deployment or real email has been performed by this implementation task.
+Deploy the compatible backend with both switches false, verify migration and existing password/refresh/logout, then publish App and enable each switch deliberately. Rollback disables new login and binding, preserves binding/audit data, existing sessions, user/admin unbinding and password login. No live deployment or real email has been performed by this implementation task.
