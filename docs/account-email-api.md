@@ -55,3 +55,15 @@ IP keys use the actual TCP peer, ignoring arbitrary forwarded headers. With the 
 The two schema files create the new tables idempotently in existing databases. Tests migrate only temporary databases. Repository compose describes one backend and a `/data` mount; production topology, SMTP sender ownership/permission, real recipient tests and App devices have not been verified. Existing website email login is evidence of a deployed email capability, not evidence that its account IDs, SMTP configuration or registration policy match this Identity service. Locate its deployment owner and copy only verified server-side SMTP settings through secure configuration.
 
 Deploy the compatible backend with both switches false, verify migration and existing password/refresh/logout, then publish App and enable each switch deliberately. Rollback disables new login and binding, preserves binding/audit data, existing sessions, user/admin unbinding and password login. No live deployment or real email has been performed by this implementation task.
+
+## Deferred feature: client IP quotas behind the gateway
+
+Recorded on 2026-10-14 against `aee3a54`. Status: feature backlog; implementation deferred by user decision. The current TCP-peer quota remains in effect.
+
+`rememberEmailPeer` and `emailRequestIP` in `backend/internal/app/account_email.go` use the TCP peer captured before RealIP middleware. Through the default frontend Nginx gateway, different clients therefore share one IP quota (30 sends/hour and 100/day by default). Unknown mailbox requests also consume it, so one client can exhaust the quota used by other clients, including their login, bind and unbind challenge requests.
+
+A local HTTP reproduction set the hourly IP quota to 1 and sent requests for two different mailboxes with different X-Real-IP/X-Forwarded-For values but the same gateway peer. The first returned 200 and the second 429. This confirms shared quota behavior; it does not establish production traffic volume.
+
+Feature scope: enforce per-client quotas at the gateway or resolve client IPs through an explicit trusted-proxy boundary. Preserve mailbox/account quotas, opaque public receipts and protection against forged forwarding headers. Choose the proxy policy and thresholds when this feature is scheduled.
+
+Acceptance: two clients behind the default gateway have independent client quotas; exhausting one does not exhaust the other's quota; direct requests and requests from untrusted proxies cannot select their quota key through forged headers; existing mailbox/account limits and public receipt behavior continue to pass regression tests.

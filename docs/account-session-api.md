@@ -34,3 +34,13 @@ The removed `/api/auth/pairing/start` and `/api/auth/pairing/claim` endpoints re
 Review account sessions and Desktop access separately from email authentication. First deploy with both email entry switches disabled and verify password login, refresh, me, logout, Hub ownership checks and Desktop ticket validation. Email binding/login and SMTP readiness follow the independent checklist in account-email-api.md. This ordering does not introduce another token format or session store.
 
 Regression commands: `make backend-test`, `go test -race ./internal/app ./internal/store ./internal/db`, `go vet ./...` and `git diff --check`. Tests use temporary databases; real deployment and devices require separate acceptance.
+
+## Deferred feature: password login attempt limits
+
+Recorded on 2026-10-14 against `aee3a54`. Status: feature backlog; implementation deferred by user decision. This entry does not change current authentication behavior.
+
+The public `POST /api/auth/account/login` handler (`backend/internal/app/server.go`, `handleAccountAppLogin`) and the default Nginx configuration have no password-attempt limit. A local HTTP reproduction made 30 consecutive incorrect-password requests for one active account; every request returned 401, and an immediate correct-password request returned 200. Repeated guessing also incurs bcrypt work for active accounts.
+
+Feature scope: limit password attempts by normalized account identifier and trusted client IP, define a retry window and a 429 response, and preserve normal login and the existing account session contract. Determine thresholds when this feature is scheduled.
+
+Acceptance: requests exceeding the configured threshold return 429; login recovers after the retry window; independent accounts/clients retain their intended quotas; forged forwarding headers cannot bypass the client limit. Cover both direct access and the default Nginx gateway path.
