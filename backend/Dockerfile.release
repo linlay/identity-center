@@ -1,5 +1,8 @@
+FROM alpine:3.22 AS certificates
+
 FROM scratch
 WORKDIR /app
+COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY app /app/app
 COPY schema.sql /app/schema.sql
 EXPOSE 8080

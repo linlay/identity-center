@@ -31,6 +31,23 @@ Email authentication is a separate review and release unit from account sessions
 
 Both `AUTH_EMAIL_LOGIN_ENABLED` and `AUTH_EMAIL_BIND_ENABLED` default false. `.env.example` declares the one SMTP sender and positive quotas. Set TLS to `tls` or `starttls`; certificate verification is mandatory. Timeout is 1–10 seconds. Configure a random digest key of at least 32 bytes, SMTP host/port, username/password, From and display name. Credentials stay in server environment configuration; never send them to the App. The default quotas (email 5/hour, 10/day; account 10/hour, 20/day; peer IP 30/hour, 100/day; failed verification 20/hour) are conservative configurable development defaults, pending provider/traffic validation. Public login uses mailbox/IP sending quotas; the one-to-one binding keeps the stricter mailbox quota effective for its account. All purposes share mailbox quota and cumulative failures.
 
+Both backend Dockerfiles copy the system CA bundle into the `scratch` runtime. Native program deployments use the host's CA store. Messages encode the UTF-8 body as quoted-printable, so Chinese and English content can be sent even when the SMTP server does not advertise `8BITMIME`.
+
+For Gmail, configure your own sender in the deployment `.env`:
+
+```dotenv
+AUTH_SMTP_HOST=smtp.gmail.com
+AUTH_SMTP_PORT=587
+AUTH_SMTP_TLS=starttls
+AUTH_SMTP_USERNAME=your-sender@gmail.com
+AUTH_SMTP_PASSWORD='<your-google-app-password>'
+AUTH_SMTP_FROM=your-sender@gmail.com
+```
+
+Use a [Google App Password](https://support.google.com/accounts/answer/185833), with two-step verification enabled and account policy permitting it. Replace the password placeholder; the normal Google account password is not an SMTP credential for this configuration. Keep From equal to the authenticated sender unless a sender alias has been authorized. Gmail also supports port `465` with `AUTH_SMTP_TLS=tls`; change the port and TLS mode together. Generate an independent `AUTH_EMAIL_DIGEST_KEY`, for example with `openssl rand -hex 32`.
+
+The backend needs DNS and direct outbound TCP access to the SMTP host and port. This sender does not use `http_proxy` or `https_proxy`. Verify TLS, final SMTP acceptance, real receipt and code consumption in a test deployment before enabling the email entry switches in production. Public login only sends to an existing active account's bound email; first bind the test mailbox from a password-authenticated account session.
+
 Enabling either entry switch requires valid email configuration at startup. With both switches false, incomplete or invalid email settings do not block management login, App Tokens or OAuth/OIDC. Email challenge and verification endpoints still validate readiness and return 503 when configuration is unusable. Valid settings continue to allow user unbinding during rollback. Manual admin unbinding remains independent of SMTP; retain the audit digest key during rollback.
 
 IP keys use the actual TCP peer, ignoring arbitrary forwarded headers. With the repository's frontend reverse proxy, this is a shared gateway limit; tune it to verified traffic before enabling production. Do not assume forwarded headers are trustworthy or add distributed storage without an actual deployment need.

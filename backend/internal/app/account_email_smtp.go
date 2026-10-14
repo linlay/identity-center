@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"mime"
+	"mime/quotedprintable"
 	"net"
 	"net/mail"
 	"net/smtp"
@@ -90,8 +91,15 @@ func sendAccountEmail(ctx context.Context, c config.EmailConfig, to, purpose, co
 	}
 	subject := mime.QEncoding.Encode("utf-8", "Zenmind "+word[0]+"验证码 / Verification code")
 	body := fmt.Sprintf("您的%s验证码是：%s。5 分钟内有效。请使用最新验证码。如非本人操作，请忽略此邮件。\r\n\r\nYour code to %s is %s. It expires in 5 minutes. Use the latest code. If you did not request this, ignore this email.\r\n", word[0], code, word[1], code)
-	message := fmt.Sprintf("From: %s\r\nTo: %s\r\nDate: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n%s", (&mail.Address{Name: c.FromName, Address: from}).String(), to, time.Now().UTC().Format(time.RFC1123Z), subject, body)
-	if _, err := writer.Write([]byte(message)); err != nil {
+	headers := fmt.Sprintf("From: %s\r\nTo: %s\r\nDate: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n", (&mail.Address{Name: c.FromName, Address: from}).String(), to, time.Now().UTC().Format(time.RFC1123Z), subject)
+	if _, err := writer.Write([]byte(headers)); err != nil {
+		return err
+	}
+	bodyWriter := quotedprintable.NewWriter(writer)
+	if _, err := bodyWriter.Write([]byte(body)); err != nil {
+		return err
+	}
+	if err := bodyWriter.Close(); err != nil {
 		return err
 	}
 	return writer.Close()

@@ -9,8 +9,11 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"io"
 	"math/big"
+	"mime/quotedprintable"
 	"net"
+	"net/mail"
 	"os"
 	"strconv"
 	"strings"
@@ -39,14 +42,16 @@ func TestSMTPFinalAcceptanceTLSAndUnknownResult(t *testing.T) {
 	t.Setenv("GODEBUG", os.Getenv("GODEBUG")+",x509usefallbackroots=1")
 	x509.SetFallbackRoots(roots)
 	pair := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
-	for _, mode := range []string{"accepted", "rejected", "unknown", "bad-certificate", "no-starttls"} {
+	serverTLS := &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12}
+	for _, mode := range []string{"accepted", "accepted-starttls", "rejected", "unknown", "bad-certificate", "no-starttls"} {
 		t.Run(mode, func(t *testing.T) {
+			accepted := strings.HasPrefix(mode, "accepted")
 			var listener net.Listener
 			var err error
-			if mode == "no-starttls" {
+			if mode == "accepted-starttls" || mode == "no-starttls" {
 				listener, err = net.Listen("tcp", "127.0.0.1:0")
 			} else {
-				listener, err = tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12})
+				listener, err = tls.Listen("tcp", "127.0.0.1:0", serverTLS)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -64,6 +69,7 @@ func TestSMTPFinalAcceptanceTLSAndUnknownResult(t *testing.T) {
 				reader, writer := bufio.NewReader(conn), bufio.NewWriter(conn)
 				reply := func(s string) { _, _ = fmt.Fprint(writer, s+"\r\n"); _ = writer.Flush() }
 				reply("220 smtp-test")
+				secured := mode != "accepted-starttls"
 				var body strings.Builder
 				for {
 					line, err := reader.ReadString('\n')
@@ -74,7 +80,20 @@ func TestSMTPFinalAcceptanceTLSAndUnknownResult(t *testing.T) {
 					switch {
 					case strings.HasPrefix(line, "EHLO"):
 						reply("250-smtp-test")
+						if !secured {
+							reply("250-STARTTLS")
+						}
 						reply("250 AUTH PLAIN")
+					case strings.HasPrefix(line, "STARTTLS"):
+						reply("220 ready for TLS")
+						secureConn := tls.Server(conn, serverTLS)
+						if err := secureConn.Handshake(); err != nil {
+							done <- body.String()
+							return
+						}
+						conn = secureConn
+						reader, writer = bufio.NewReader(conn), bufio.NewWriter(conn)
+						secured = true
 					case strings.HasPrefix(line, "AUTH"):
 						reply("235 authenticated")
 					case strings.HasPrefix(line, "MAIL"), strings.HasPrefix(line, "RCPT"):
@@ -92,7 +111,7 @@ func TestSMTPFinalAcceptanceTLSAndUnknownResult(t *testing.T) {
 							}
 							body.WriteString(line)
 						}
-						if mode == "accepted" {
+						if accepted {
 							reply("250 accepted")
 						} else if mode == "rejected" {
 							reply("550 rejected")
@@ -109,7 +128,7 @@ func TestSMTPFinalAcceptanceTLSAndUnknownResult(t *testing.T) {
 			if mode == "bad-certificate" {
 				host = "localhost"
 			}
-			if mode == "no-starttls" {
+			if mode == "accepted-starttls" || mode == "no-starttls" {
 				tlsMode = "starttls"
 			}
 			cfg := config.EmailConfig{Host: host, Port: port, TLSMode: tlsMode, Username: "test", Password: "test", From: "sender@example.com", FromName: "Zenmind", DigestKey: strings.Repeat("x", 32), Timeout: time.Second,
@@ -118,19 +137,37 @@ func TestSMTPFinalAcceptanceTLSAndUnknownResult(t *testing.T) {
 			defer cancel()
 			started := time.Now()
 			err = sendAccountEmail(ctx, cfg, "Alice+tag@Example.COM", "bind", "123456")
-			if mode == "accepted" && err != nil {
+			if accepted && err != nil {
 				t.Fatal("accepted SMTP failed", err)
 			}
-			if mode != "accepted" && err == nil {
+			if !accepted && err == nil {
 				t.Fatal("unconfirmed SMTP accepted")
 			}
 			if time.Since(started) > time.Second {
 				t.Fatal("SMTP request exceeded timeout bound")
 			}
 			_ = listener.Close()
-			body := <-done
-			if mode == "accepted" && (!strings.Contains(body, "123456") || !strings.Contains(body, "5 minutes") || !strings.Contains(body, "5 分钟") || !strings.Contains(body, "Content-Type: text/plain") || !strings.Contains(body, "To: Alice+tag@Example.COM")) {
-				t.Fatal("missing bilingual plain-text content")
+			message := <-done
+			if accepted {
+				for _, b := range []byte(message) {
+					if b > 127 {
+						t.Fatal("non-ASCII message sent without 8BITMIME")
+					}
+				}
+				mailMessage, err := mail.ReadMessage(strings.NewReader(message))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if mailMessage.Header.Get("Content-Transfer-Encoding") != "quoted-printable" || mailMessage.Header.Get("Content-Type") != "text/plain; charset=utf-8" || mailMessage.Header.Get("To") != "Alice+tag@Example.COM" {
+					t.Fatal("incorrect message headers")
+				}
+				body, err := io.ReadAll(quotedprintable.NewReader(mailMessage.Body))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(string(body), "您的绑定邮箱验证码是：123456。5 分钟内有效。") || !strings.Contains(string(body), "Your code to bind your email is 123456.") || !strings.Contains(string(body), "If you did not request this, ignore this email.") {
+					t.Fatal("missing bilingual plain-text content")
+				}
 			}
 		})
 	}
