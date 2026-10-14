@@ -1918,8 +1918,17 @@ func (s *Server) verifyOAuthAccessToken(token string) (map[string]any, error) {
 	if exp <= time.Now().Unix() {
 		return nil, fmt.Errorf("expired")
 	}
-	scope := toString(claims["scope"])
-	if scope == "app" {
+	validAudience := claims["aud"] == "app-api"
+	if audiences, ok := claims["aud"].([]any); ok {
+		for _, audience := range audiences {
+			if audience == "app-api" {
+				validAudience = true
+				break
+			}
+		}
+	}
+	clientID, _ := claims["client_id"].(string)
+	if !validAudience || strings.TrimSpace(clientID) == "" {
 		return nil, fmt.Errorf("not oauth token")
 	}
 	return claims, nil

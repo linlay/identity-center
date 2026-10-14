@@ -11,6 +11,8 @@ QR login creates a two-minute challenge. The QR contains only challengeId; the s
 
 Account device credentials are hashed; account access-token audits store only a digest. Legacy local-service app authentication remains separate, and legacy device operations cannot access account-session records.
 
+OIDC userinfo accepts OAuth access tokens only, identified by audience `app-api` and a nonempty `client_id`. Account and legacy App Tokens cannot be used as OAuth tokens, including after account logout.
+
 Both schema entrypoints use the embedded schema to create missing required tables, including login challenges and email authentication. AUTH_SCHEMA_PATH is executed first when configured. The existing DEVICE_ table receives only the missing ACCOUNT_ID_ column and its account index; old rows remain unassigned to accounts. Go does not duplicate challenge-table DDL. A frozen pre-account schema tests first and repeated initialization without changing legacy users or device credentials. No signing-key or issuer migration is performed.
 
 ## Consumers and retired endpoints
@@ -29,6 +31,8 @@ Both schema entrypoints use the embedded schema to create missing required table
 Account and challenge secrets share the existing 32-byte random-secret helper. Expired challenge rows are removed by the existing cleanup cron after the configured retention period; there is no new worker or polling system. Failed session revocation returns an error rather than reporting successful logout.
 
 ## Review and release boundary
+
+The removed `/api/auth/pairing/start` and `/api/auth/pairing/claim` endpoints return 404. Before deploying, verify that deployed clients have migrated from this legacy pairing protocol to account login/challenges or the current Desktop connection protocol. Updating the backend first does not preserve those old clients' pairing flow. The current mobile, Desktop and Hub source has no callers; no unused compatibility implementation is retained.
 
 Review account sessions, QR login and Desktop access separately from email authentication. First deploy with both email entry switches disabled and verify password/QR login, refresh, me, logout, Hub ownership checks and Desktop ticket validation. Email binding/login and SMTP readiness follow the independent checklist in account-email-api.md. This ordering does not introduce another token format or session store.
 

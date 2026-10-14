@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -14,9 +15,49 @@ import (
 )
 
 func configureEmailTest(s *Server) {
-	s.cfg.Email = config.EmailConfig{LoginEnabled: true, BindEnabled: true, Host: "smtp.example.test", Port: 465, TLSMode: "tls", Username: "test", Password: "test", From: "sender@example.test", DigestKey: "test-only-digest-key-longer-than-32-bytes", Timeout: time.Millisecond,
+	s.cfg.Email = config.EmailConfig{LoginEnabled: true, BindEnabled: true, Host: "smtp.example.test", Port: 465, TLSMode: "tls", Username: "test", Password: "test", From: "sender@example.test", DigestKey: "test-only-digest-key-longer-than-32-bytes", Timeout: time.Second,
 		EmailHour: 5, EmailDay: 10, AccountHour: 10, AccountDay: 20, IPHour: 30, IPDay: 100, FailureHour: 20}
 }
+
+func TestDisabledInvalidEmailKeepsCoreAuthenticationAvailable(t *testing.T) {
+	s, cleanup := newAppAccessTestServer(t)
+	defer cleanup()
+	configureEmailTest(s)
+	s.cfg.Email.LoginEnabled = false
+	s.cfg.Email.BindEnabled = false
+	s.cfg.Email.TLSMode = "none"
+	s.sendEmail = func(context.Context, string, string, string) error {
+		t.Error("invalid email configuration reached SMTP")
+		return errors.New("unexpected SMTP call")
+	}
+	createAccountUser(t, s, "alice")
+	rr, session := loginAccountSession(t, s, "alice")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("invalid disabled email blocked account login: %d", rr.Code)
+	}
+	token := session["accessToken"].(string)
+	for _, path := range []string{"/api/auth/me", "/api/auth/account/security"} {
+		if rr := accountRequest(t, s.Handler(), http.MethodGet, path, token, nil); rr.Code != http.StatusOK {
+			t.Errorf("invalid disabled email blocked %s: %d", path, rr.Code)
+		}
+	}
+	for _, path := range []string{"/api/auth/account/email/bind/challenges", "/api/auth/account/email/unbind/challenges"} {
+		rr := accountRequest(t, s.Handler(), http.MethodPost, path, token, map[string]string{"requestId": uuid.NewString()})
+		if rr.Code != http.StatusServiceUnavailable || decodeBody(t, rr)["error"] != "email_unavailable_service" {
+			t.Errorf("invalid email configuration did not disable %s: status = %d", path, rr.Code)
+		}
+	}
+	// The existing admin password login and local App Token issuance also remain usable.
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/security/app-tokens/issue", strings.NewReader(`{"deviceName":"Legacy Desktop"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(adminSessionCookie(t, s))
+	rr = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("invalid disabled email blocked legacy App Token issuance: %d", rr.Code)
+	}
+}
+
 func TestEmailAccountHTTPFlowAndPublicFailureReceipt(t *testing.T) {
 	s, cleanup := newAppAccessTestServer(t)
 	defer cleanup()
@@ -66,6 +107,9 @@ func TestEmailAccountHTTPFlowAndPublicFailureReceipt(t *testing.T) {
 	if rr.Code != 200 || decodeBody(t, rr)["accountId"] != a {
 		t.Fatal("login", rr.Body.String())
 	}
+	// Rollback disables new login/binding while valid SMTP still permits unbinding.
+	s.cfg.Email.LoginEnabled = false
+	s.cfg.Email.BindEnabled = false
 	unbind, unbindCode, _, err := s.store.ReserveEmailChallenge(store.EmailChallengeInput{Purpose: "unbind", AccountID: a, DeviceID: session["deviceId"].(string), IP: "127.0.0.2", RequestID: uuid.NewString(), Secret: s.cfg.Email.DigestKey, Limits: store.EmailLimits{EmailHour: 5, EmailDay: 10, AccountHour: 10, AccountDay: 20, IPHour: 30, IPDay: 100, FailureHour: 20}}, now.Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -80,6 +124,8 @@ func TestEmailAccountHTTPFlowAndPublicFailureReceipt(t *testing.T) {
 	if rr := accountRequest(t, s.Handler(), "GET", "/api/auth/me", token, nil); rr.Code != 200 {
 		t.Fatal("unbind logged out account")
 	}
+	s.cfg.Email.LoginEnabled = true
+	s.cfg.Email.BindEnabled = true
 	// Unknown addresses get the same opaque public receipt, with no mail delivery.
 	rr = accountRequest(t, s.Handler(), "POST", "/api/auth/account/email/challenges", "", map[string]string{"email": "unknown@example.com", "requestId": uuid.NewString()})
 	if rr.Code != 200 || sent != 1 {

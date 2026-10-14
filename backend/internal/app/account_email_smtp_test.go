@@ -112,9 +112,12 @@ func TestSMTPFinalAcceptanceTLSAndUnknownResult(t *testing.T) {
 			if mode == "no-starttls" {
 				tlsMode = "starttls"
 			}
-			cfg := config.EmailConfig{Host: host, Port: port, TLSMode: tlsMode, Username: "test", Password: "test", From: "sender@example.com", FromName: "Zenmind", DigestKey: strings.Repeat("x", 32), Timeout: 250 * time.Millisecond}
+			cfg := config.EmailConfig{Host: host, Port: port, TLSMode: tlsMode, Username: "test", Password: "test", From: "sender@example.com", FromName: "Zenmind", DigestKey: strings.Repeat("x", 32), Timeout: time.Second,
+				EmailHour: 1, EmailDay: 1, AccountHour: 1, AccountDay: 1, IPHour: 1, IPDay: 1, FailureHour: 1}
+			ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+			defer cancel()
 			started := time.Now()
-			err = sendAccountEmail(context.Background(), cfg, "Alice+tag@Example.COM", "bind", "123456")
+			err = sendAccountEmail(ctx, cfg, "Alice+tag@Example.COM", "bind", "123456")
 			if mode == "accepted" && err != nil {
 				t.Fatal("accepted SMTP failed", err)
 			}
@@ -124,6 +127,7 @@ func TestSMTPFinalAcceptanceTLSAndUnknownResult(t *testing.T) {
 			if time.Since(started) > time.Second {
 				t.Fatal("SMTP request exceeded timeout bound")
 			}
+			_ = listener.Close()
 			body := <-done
 			if mode == "accepted" && (!strings.Contains(body, "123456") || !strings.Contains(body, "5 minutes") || !strings.Contains(body, "5 分钟") || !strings.Contains(body, "Content-Type: text/plain") || !strings.Contains(body, "To: Alice+tag@Example.COM")) {
 				t.Fatal("missing bilingual plain-text content")

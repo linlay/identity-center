@@ -26,22 +26,32 @@ func loadEmailConfig() (EmailConfig, error) {
 		IPHour: envInt("AUTH_EMAIL_SEND_IP_HOUR", 30), IPDay: envInt("AUTH_EMAIL_SEND_IP_DAY", 100),
 		FailureHour: envInt("AUTH_EMAIL_FAILURE_HOUR", 20),
 	}
-	if c.Port < 1 || c.Port > 65535 || c.Timeout < time.Second || c.Timeout > 10*time.Second || (c.TLSMode != "tls" && c.TLSMode != "starttls") {
-		return c, fmt.Errorf("invalid SMTP port, TLS mode or timeout (1-10 seconds)")
-	}
-	for _, v := range []int{c.EmailHour, c.EmailDay, c.AccountHour, c.AccountDay, c.IPHour, c.IPDay, c.FailureHour} {
-		if v <= 0 {
-			return c, fmt.Errorf("email limits must be positive")
+	if c.LoginEnabled || c.BindEnabled {
+		if err := c.validate(); err != nil {
+			return c, err
 		}
-	}
-	if strings.ContainsAny(c.Host+c.From+c.FromName, "\r\n") {
-		return c, fmt.Errorf("invalid SMTP identity")
-	}
-	if (c.LoginEnabled || c.BindEnabled) && !c.Ready() {
-		return c, fmt.Errorf("email authentication requires SMTP and a digest key of at least 32 bytes")
 	}
 	return c, nil
 }
+
+func (c EmailConfig) validate() error {
+	if c.Port < 1 || c.Port > 65535 || c.Timeout < time.Second || c.Timeout > 10*time.Second || (c.TLSMode != "tls" && c.TLSMode != "starttls") {
+		return fmt.Errorf("invalid SMTP port, TLS mode or timeout (1-10 seconds)")
+	}
+	for _, v := range []int{c.EmailHour, c.EmailDay, c.AccountHour, c.AccountDay, c.IPHour, c.IPDay, c.FailureHour} {
+		if v <= 0 {
+			return fmt.Errorf("email limits must be positive")
+		}
+	}
+	if strings.ContainsAny(c.Host+c.From+c.FromName, "\r\n") {
+		return fmt.Errorf("invalid SMTP identity")
+	}
+	if c.Host == "" || c.From == "" || c.Username == "" || c.Password == "" || len(c.DigestKey) < 32 {
+		return fmt.Errorf("email authentication requires SMTP and a digest key of at least 32 bytes")
+	}
+	return nil
+}
+
 func (c EmailConfig) Ready() bool {
-	return c.Host != "" && c.From != "" && c.Username != "" && c.Password != "" && len(c.DigestKey) >= 32
+	return c.validate() == nil
 }
