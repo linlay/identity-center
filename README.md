@@ -128,3 +128,20 @@ make release-program
 构建产物为 Program Bundle，无需 Docker 即可运行；bundle 内包含后端可执行文件和前端静态资源，frontend 路由由宿主系统处理。
 
 Program Bundle 使用根 `.env.example` 作为唯一运行配置模板；端口、数据目录和日志目录由启动脚本参数或内置 fallback 控制。
+
+
+## 短期设备票据
+
+复用管理端 `/admin/api/security/app-tokens/issue` 创建设备凭据。语音硬件注册必须设置 `maxAccessTtlSeconds: 1800`；管理台勾选 “Limit this device to 30-minute access tokens” 会写入该上限。`accessTtlSeconds` 只表示本次票据时长；设备上限保存在原 DEVICE_ 表的可空 MAX_ACCESS_TTL_SECONDS_ 列，刷新请求不能修改。历史空值、Desktop pairing 与 CLI 设备保留原策略，不推测设备类型。
+
+```json
+{"deviceName":"Voice device","maxAccessTtlSeconds":1800}
+```
+
+省略本次 TTL 时取原默认值与设备／全局上限中的较小值；显式非正或超限 TTL 拒绝，巨大整数在转 Duration 前校验。刷新沿用 `/api/auth/refresh`，先验证凭据、状态、TTL 并签名，再在一条条件 UPDATE 中核对原 hash、上限与 ACTIVE 状态并轮换。并发使用同一旧凭据只会有一个成功；失败 TTL 不废掉旧凭据。关闭轮换时仍核对同一设备快照，维持原凭据。
+
+固件只持久化 deviceToken，成功刷新后必须原子替换；accessToken 仅存内存，在空闲边界提前刷新并新建媒体连接。轮换响应丢失不能盲目重发或回退到长期用户 JWT，沿用管理端重新配置流程，并撤销失联设备。硬件不保存供应商 Key。
+
+Subject 继续使用当前部署的 App 用户，device_id 只表示设备；本次没有增加多用户或设备专属权限体系。撤销立即禁止 identity-center 续期；Platform 离线验票，已有票据最长持续到 exp，届时仅关闭媒体，不取消已受理 Run，也不重放旧录音或播报。当前 App JWT 不签发 aud；配置强制 audience 的 Platform 会明确拒绝，不将这种部署写成已接通。
+
+启动 schema 初始化自动补充 nullable 列，保留旧凭据和状态；不改生产数据库路径或启动方式。软件行为与并发测试已通过，真实硬件凭据保存、续期及部署验收仍需单独执行。

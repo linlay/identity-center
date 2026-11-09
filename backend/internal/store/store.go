@@ -48,14 +48,15 @@ type OAuthClient struct {
 }
 
 type Device struct {
-	DeviceID          string `json:"deviceId"`
-	DeviceName        string `json:"deviceName"`
-	DeviceTokenBcrypt string
-	Status            string     `json:"status"`
-	LastSeenAt        *time.Time `json:"lastSeenAt"`
-	RevokedAt         *time.Time `json:"revokedAt"`
-	CreateAt          time.Time  `json:"createAt"`
-	UpdateAt          time.Time  `json:"updateAt"`
+	DeviceID            string `json:"deviceId"`
+	DeviceName          string `json:"deviceName"`
+	MaxAccessTTLSeconds *int   `json:"maxAccessTtlSeconds,omitempty"`
+	DeviceTokenBcrypt   string
+	Status              string     `json:"status"`
+	LastSeenAt          *time.Time `json:"lastSeenAt"`
+	RevokedAt           *time.Time `json:"revokedAt"`
+	CreateAt            time.Time  `json:"createAt"`
+	UpdateAt            time.Time  `json:"updateAt"`
 }
 
 type TokenAudit struct {
@@ -363,7 +364,10 @@ func (s *Store) EnsureBootstrapClient() error {
 	return err
 }
 
-func (s *Store) CreateDevice(name, rawToken string) (*Device, error) {
+func (s *Store) CreateDevice(name, rawToken string, maxAccessTTLSeconds *int) (*Device, error) {
+	if maxAccessTTLSeconds != nil && *maxAccessTTLSeconds <= 0 {
+		return nil, fmt.Errorf("device access TTL limit must be positive")
+	}
 	id := uuid.NewString()
 	now := time.Now().UTC()
 	tokenHash, err := bcrypt.GenerateFromPassword([]byte(rawToken), bcrypt.DefaultCost)
@@ -377,7 +381,7 @@ func (s *Store) CreateDevice(name, rawToken string) (*Device, error) {
 	if len(deviceName) > 64 {
 		deviceName = deviceName[:64]
 	}
-	_, err = s.db.Exec(`INSERT INTO DEVICE_(DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_) VALUES(?, ?, ?, 'ACTIVE', ?, NULL, ?, ?)`, id, deviceName, string(tokenHash), now, now, now)
+	_, err = s.db.Exec(`INSERT INTO DEVICE_(DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_, MAX_ACCESS_TTL_SECONDS_) VALUES(?, ?, ?, 'ACTIVE', ?, NULL, ?, ?, ?)`, id, deviceName, string(tokenHash), now, now, now, maxAccessTTLSeconds)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +390,7 @@ func (s *Store) CreateDevice(name, rawToken string) (*Device, error) {
 
 func (s *Store) EnsureActiveDeviceWithHash(name, tokenHash string) (*Device, error) {
 	deviceName := normalizeDeviceName(name)
-	row := s.db.QueryRow(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE STATUS_ = 'ACTIVE' AND DEVICE_NAME_ = ? ORDER BY UPDATE_AT_ DESC LIMIT 1`, deviceName)
+	row := s.db.QueryRow(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_, MAX_ACCESS_TTL_SECONDS_ FROM DEVICE_ WHERE STATUS_ = 'ACTIVE' AND DEVICE_NAME_ = ? ORDER BY UPDATE_AT_ DESC LIMIT 1`, deviceName)
 	device, err := scanDevice(row)
 	if err == nil {
 		now := time.Now().UTC()
@@ -444,12 +448,12 @@ func normalizeDeviceName(name string) string {
 }
 
 func (s *Store) FindDeviceByID(deviceID string) (*Device, error) {
-	row := s.db.QueryRow(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE DEVICE_ID_ = ?`, deviceID)
+	row := s.db.QueryRow(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_, MAX_ACCESS_TTL_SECONDS_ FROM DEVICE_ WHERE DEVICE_ID_ = ?`, deviceID)
 	return scanDevice(row)
 }
 
 func (s *Store) FindActiveDeviceByToken(rawToken string) (*Device, error) {
-	rows, err := s.db.Query(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ WHERE STATUS_ = 'ACTIVE' ORDER BY UPDATE_AT_ DESC`)
+	rows, err := s.db.Query(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_, MAX_ACCESS_TTL_SECONDS_ FROM DEVICE_ WHERE STATUS_ = 'ACTIVE' ORDER BY UPDATE_AT_ DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +471,7 @@ func (s *Store) FindActiveDeviceByToken(rawToken string) (*Device, error) {
 }
 
 func (s *Store) ListDevices() ([]Device, error) {
-	rows, err := s.db.Query(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_ FROM DEVICE_ ORDER BY UPDATE_AT_ DESC`)
+	rows, err := s.db.Query(`SELECT DEVICE_ID_, DEVICE_NAME_, DEVICE_TOKEN_BCRYPT_, STATUS_, LAST_SEEN_AT_, REVOKED_AT_, CREATE_AT_, UPDATE_AT_, MAX_ACCESS_TTL_SECONDS_ FROM DEVICE_ ORDER BY UPDATE_AT_ DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -508,14 +512,25 @@ func (s *Store) RevokeDevice(deviceID string) error {
 	return err
 }
 
-func (s *Store) RotateDeviceToken(deviceID, rawToken string) error {
-	now := time.Now().UTC()
-	hash, err := bcrypt.GenerateFromPassword([]byte(rawToken), bcrypt.DefaultCost)
-	if err != nil {
-		return err
+// RefreshDevice validates the credential snapshot and ACTIVE status in the same
+// write that rotates/touches it. A concurrent refresh or revocation cannot win twice.
+// Empty nextRawToken retains the existing credential when rotation is disabled.
+func (s *Store) RefreshDevice(device *Device, nextRawToken string) (bool, error) {
+	hash := device.DeviceTokenBcrypt
+	if nextRawToken != "" {
+		next, err := bcrypt.GenerateFromPassword([]byte(nextRawToken), bcrypt.DefaultCost)
+		if err != nil {
+			return false, err
+		}
+		hash = string(next)
 	}
-	_, err = s.db.Exec(`UPDATE DEVICE_ SET DEVICE_TOKEN_BCRYPT_ = ?, LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND STATUS_ = 'ACTIVE'`, string(hash), now, now, deviceID)
-	return err
+	now := time.Now().UTC()
+	result, err := s.db.Exec(`UPDATE DEVICE_ SET DEVICE_TOKEN_BCRYPT_ = ?, LAST_SEEN_AT_ = ?, UPDATE_AT_ = ? WHERE DEVICE_ID_ = ? AND STATUS_ = 'ACTIVE' AND DEVICE_TOKEN_BCRYPT_ = ? AND MAX_ACCESS_TTL_SECONDS_ IS ?`, hash, now, now, device.DeviceID, device.DeviceTokenBcrypt, device.MaxAccessTTLSeconds)
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	return count == 1, err
 }
 
 func (s *Store) IsDeviceActive(deviceID string) (bool, error) {
@@ -788,7 +803,7 @@ func scanDevice(scanner interface{ Scan(dest ...any) error }) (*Device, error) {
 		lastSeen sql.NullTime
 		revoked  sql.NullTime
 	)
-	if err := scanner.Scan(&d.DeviceID, &d.DeviceName, &d.DeviceTokenBcrypt, &d.Status, &lastSeen, &revoked, &d.CreateAt, &d.UpdateAt); err != nil {
+	if err := scanner.Scan(&d.DeviceID, &d.DeviceName, &d.DeviceTokenBcrypt, &d.Status, &lastSeen, &revoked, &d.CreateAt, &d.UpdateAt, &d.MaxAccessTTLSeconds); err != nil {
 		return nil, err
 	}
 	if lastSeen.Valid {

@@ -55,6 +55,7 @@
 - `BACKEND_PORT` 不再是有效部署变量；backend 容器内固定监听 `8080`
 - `AUTH_ISSUER`、admin bcrypt 仍是关键输入；前端入口固定为 `/admin/`
 - 当前仓库仍兼容旧代码里的可编辑配置文件能力，但它不再是默认部署模型
+- 设备可由受信管理入口设置 maxAccessTtlSeconds，存入原 DEVICE_ 的 nullable 列；语音硬件使用 1800 秒。签发／刷新共用 TTL 校验，刷新先校验后条件轮换，旧设备空值策略不变。详见 README 的短期设备票据；实机与目标部署尚未验收。
 
 ## 8. 开发流程
 

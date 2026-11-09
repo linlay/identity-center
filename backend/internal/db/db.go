@@ -48,6 +48,35 @@ func InitEmbeddedSchema(db *sql.DB) error {
 }
 
 func initSchemaSQL(db *sql.DB, raw []byte) error {
-	_, err := db.Exec(string(raw))
+	if _, err := db.Exec(string(raw)); err != nil {
+		return err
+	}
+	// CREATE TABLE IF NOT EXISTS leaves legacy DEVICE_ tables unchanged.
+	// Add only the nullable policy column; existing devices keep their policy.
+	rows, err := db.Query(`PRAGMA table_info(DEVICE_)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var id, notNull, primaryKey int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&id, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "MAX_ACCESS_TTL_SECONDS_" {
+			found = true
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if !found {
+		_, err = db.Exec(`ALTER TABLE DEVICE_ ADD COLUMN MAX_ACCESS_TTL_SECONDS_ INTEGER CHECK (MAX_ACCESS_TTL_SECONDS_ > 0)`)
+	}
 	return err
 }
