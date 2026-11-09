@@ -11,6 +11,7 @@ const ACCESS_TTL_MAX_SECONDS = 30 * 24 * 60 * 60;
 const createDefaultAccessTtl = () => ({ days: '0', hours: '0', minutes: '10', seconds: '0' });
 const createInitialIssueForm = () => ({
   deviceName: 'Admin Console Device',
+  shortLivedDevice: false,
   accessTtl: createDefaultAccessTtl()
 });
 const createInitialRefreshForm = () => ({
@@ -103,6 +104,7 @@ export function SecurityPage() {
         deviceName: issueForm.deviceName,
         accessTtlSeconds: accessTtlToSeconds(issueForm.accessTtl)
       };
+      if (issueForm.shortLivedDevice) payload.maxAccessTtlSeconds = 30 * 60;
       const result = await request('/security/app-tokens/issue', {
         method: 'POST',
         body: JSON.stringify(payload)
@@ -199,6 +201,11 @@ export function SecurityPage() {
 
       <PageCard title="Issue App Access Token">
         <form onSubmit={issueAppToken}>
+          <label>
+            <input type="checkbox" checked={issueForm.shortLivedDevice}
+              onChange={(event) => setIssueForm((prev) => ({ ...prev, shortLivedDevice: event.target.checked }))} />
+            Limit this device to 30-minute access tokens (required for voice hardware)
+          </label>
           <div className="row">
             <div>
               <label>Device Name</label>
@@ -275,6 +282,7 @@ export function SecurityPage() {
                 <tr><th>Username</th><td>{issueResult.username}</td></tr>
                 <tr><th>Device ID</th><td>{issueResult.deviceId}</td></tr>
                 <tr><th>Device Name</th><td>{issueResult.deviceName}</td></tr>
+                <tr><th>Device TTL Limit</th><td>{issueResult.maxAccessTtlSeconds ? `${issueResult.maxAccessTtlSeconds} seconds` : 'Default policy'}</td></tr>
                 <tr><th>Expire At</th><td>{formatTime(issueResult.accessTokenExpireAt)}</td></tr>
                 <tr>
                   <th>Access Token</th>

@@ -639,19 +639,20 @@ func (s *Server) handleRotateClientSecret(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleAdminIssueAppToken(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		DeviceName       string `json:"deviceName"`
-		AccessTTLSeconds *int   `json:"accessTtlSeconds"`
+		DeviceName          string `json:"deviceName"`
+		AccessTTLSeconds    *int   `json:"accessTtlSeconds"`
+		MaxAccessTTLSeconds *int   `json:"maxAccessTtlSeconds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeAPIError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds)
+	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds, req.MaxAccessTTLSeconds)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	result, appErr := s.createAppLoginSession(req.DeviceName, accessTTL)
+	result, appErr := s.createAppLoginSession(req.DeviceName, accessTTL, req.MaxAccessTTLSeconds)
 	if appErr != nil {
 		writeAPIError(w, appErr.status, appErr.message)
 		return
@@ -666,6 +667,7 @@ type appLoginResult struct {
 	AccessToken         string    `json:"accessToken"`
 	AccessTokenExpireAt time.Time `json:"accessTokenExpireAt"`
 	DeviceToken         string    `json:"deviceToken"`
+	MaxAccessTTLSeconds *int      `json:"maxAccessTtlSeconds,omitempty"`
 }
 
 type appError struct {
@@ -673,12 +675,12 @@ type appError struct {
 	message string
 }
 
-func (s *Server) createAppLoginSession(deviceName string, accessTTL time.Duration) (*appLoginResult, *appError) {
+func (s *Server) createAppLoginSession(deviceName string, accessTTL time.Duration, maxAccessTTLSeconds *int) (*appLoginResult, *appError) {
 	deviceToken, err := randomToken(32)
 	if err != nil {
 		return nil, &appError{status: http.StatusInternalServerError, message: "failed to generate token"}
 	}
-	device, err := s.store.CreateDevice(deviceName, deviceToken)
+	device, err := s.store.CreateDevice(deviceName, deviceToken, maxAccessTTLSeconds)
 	if err != nil {
 		return nil, &appError{status: http.StatusInternalServerError, message: "failed to create device"}
 	}
@@ -699,6 +701,7 @@ func (s *Server) createAppLoginSession(deviceName string, accessTTL time.Duratio
 		AccessToken:         accessToken,
 		AccessTokenExpireAt: expAt,
 		DeviceToken:         deviceToken,
+		MaxAccessTTLSeconds: device.MaxAccessTTLSeconds,
 	}, nil
 }
 
@@ -777,12 +780,12 @@ func (s *Server) handleAppPairingClaim(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, errMessage)
 		return
 	}
-	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds)
+	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds, nil)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	result, appErr := s.createAppLoginSession(req.DeviceName, accessTTL)
+	result, appErr := s.createAppLoginSession(req.DeviceName, accessTTL, nil)
 	if appErr != nil {
 		writeAPIError(w, appErr.status, appErr.message)
 		return
@@ -878,43 +881,41 @@ func (s *Server) handleAppRefresh(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, "invalid device token")
 		return
 	}
-	nextDeviceToken := req.DeviceToken
-	if s.cfg.AppRotateDeviceToken {
-		nextDeviceToken, err = randomToken(32)
-		if err != nil {
-			writeInternalError(w, err)
-			return
-		}
-		if err := s.store.RotateDeviceToken(device.DeviceID, nextDeviceToken); err != nil {
-			writeInternalError(w, err)
-			return
-		}
-	} else {
-		_ = s.store.TouchDevice(device.DeviceID)
-	}
-	updatedDevice, _ := s.store.FindDeviceByID(device.DeviceID)
-	if updatedDevice == nil {
-		updatedDevice = device
-	}
-	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds)
+	accessTTL, err := s.resolveAccessTTL(req.AccessTTLSeconds, device.MaxAccessTTLSeconds)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	accessToken, issuedAt, expAt, err := s.issueAppAccessToken(s.cfg.AppUsername, updatedDevice.DeviceID, accessTTL)
+	// Finish validation and signing before the conditional credential write.
+	accessToken, issuedAt, expAt, err := s.issueAppAccessToken(s.cfg.AppUsername, device.DeviceID, accessTTL)
 	if err != nil {
 		writeInternalError(w, err)
 		return
 	}
+	nextDeviceToken, rotateTo := req.DeviceToken, ""
+	if s.cfg.AppRotateDeviceToken {
+		rotateTo, err = randomToken(32)
+		if err != nil {
+			writeInternalError(w, err)
+			return
+		}
+		nextDeviceToken = rotateTo
+	}
+	refreshed, err := s.store.RefreshDevice(device, rotateTo)
+	if err != nil {
+		writeInternalError(w, err)
+		return
+	}
+	if !refreshed {
+		writeAPIError(w, http.StatusBadRequest, "device credential changed or revoked")
+		return
+	}
 	username := s.cfg.AppUsername
-	deviceID := updatedDevice.DeviceID
-	deviceName := updatedDevice.DeviceName
+	deviceID, deviceName := device.DeviceID, device.DeviceName
 	_ = s.store.RecordTokenAudit("APP_ACCESS", accessToken, &username, &deviceID, &deviceName, nil, nil, issuedAt, &expAt)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"deviceId":            updatedDevice.DeviceID,
-		"accessToken":         accessToken,
-		"accessTokenExpireAt": expAt,
-		"deviceToken":         nextDeviceToken,
+		"deviceId": device.DeviceID, "accessToken": accessToken, "accessTokenExpireAt": expAt,
+		"deviceToken": nextDeviceToken, "maxAccessTtlSeconds": device.MaxAccessTTLSeconds,
 	})
 }
 
@@ -1775,18 +1776,31 @@ func (s *Server) verifyOAuthAccessToken(token string) (map[string]any, error) {
 	return claims, nil
 }
 
-func (s *Server) resolveAccessTTL(requested *int) (time.Duration, error) {
-	if requested == nil {
-		return s.cfg.AppAccessTTL, nil
+func (s *Server) resolveAccessTTL(requested, deviceLimit *int) (time.Duration, error) {
+	maximum := int64(s.cfg.AppMaxAccessTTL / time.Second)
+	if deviceLimit != nil {
+		if *deviceLimit <= 0 {
+			return 0, fmt.Errorf("invalid maxAccessTtlSeconds")
+		}
+		if int64(*deviceLimit) < maximum {
+			maximum = int64(*deviceLimit)
+		}
 	}
+	if requested == nil {
+		value := s.cfg.AppAccessTTL
+		if deviceLimit != nil && value > time.Duration(maximum)*time.Second {
+			value = time.Duration(maximum) * time.Second
+		}
+		return value, nil
+	}
+	// Compare seconds before converting to Duration, so large integers cannot wrap.
 	if *requested <= 0 {
 		return 0, fmt.Errorf("accessTtlSeconds must be positive")
 	}
-	value := time.Duration(*requested) * time.Second
-	if value > s.cfg.AppMaxAccessTTL {
-		return 0, fmt.Errorf("requested access ttl exceeds limit, max seconds=%d", int(s.cfg.AppMaxAccessTTL.Seconds()))
+	if int64(*requested) > maximum {
+		return 0, fmt.Errorf("requested access ttl exceeds limit, max seconds=%d", maximum)
 	}
-	return value, nil
+	return time.Duration(*requested) * time.Second, nil
 }
 
 func verifyPKCE(attrs map[string]any, codeVerifier string) bool {
